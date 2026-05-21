@@ -7,6 +7,12 @@ const defaultState = {
   sales: [],
 };
 
+let reportFilter = {
+  mode: "all",
+  start: "",
+  end: "",
+};
+
 function createId() {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
   return `id-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -18,7 +24,7 @@ function clone(value) {
 }
 
 function escapeHtml(value) {
-  return String(value).replace(/[&<>"']/g, (char) => {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => {
     const entities = {
       "&": "&amp;",
       "<": "&lt;",
@@ -28,6 +34,11 @@ function escapeHtml(value) {
     };
     return entities[char];
   });
+}
+
+function toNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
 }
 
 const exampleState = {
@@ -129,39 +140,104 @@ const dateFormat = new Intl.DateTimeFormat("pt-BR", {
   timeStyle: "short",
 });
 
+const fileDateFormat = new Intl.DateTimeFormat("pt-BR");
+
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
+
+function normalizeState(input) {
+  const normalized = { ...clone(defaultState), ...input };
+  normalized.ingredients = Array.isArray(normalized.ingredients) ? normalized.ingredients : [];
+  normalized.products = Array.isArray(normalized.products) ? normalized.products : [];
+  normalized.purchases = Array.isArray(normalized.purchases) ? normalized.purchases : [];
+  normalized.sales = Array.isArray(normalized.sales) ? normalized.sales : [];
+
+  normalized.ingredients = normalized.ingredients.map((ingredient) => ({
+    id: String(ingredient.id || createId()),
+    name: String(ingredient.name || "Materia-prima"),
+    unit: String(ingredient.unit || "un"),
+    stock: toNumber(ingredient.stock),
+    min: toNumber(ingredient.min),
+  }));
+
+  normalized.products = normalized.products.map((product) => ({
+    id: String(product.id || createId()),
+    name: String(product.name || "Produto"),
+    price: toNumber(product.price),
+    recipe: Array.isArray(product.recipe)
+      ? product.recipe
+          .map((line) => ({
+            ingredientId: String(line.ingredientId || ""),
+            quantity: toNumber(line.quantity),
+          }))
+          .filter((line) => line.ingredientId && line.quantity > 0)
+      : [],
+  }));
+
+  normalized.purchases = normalized.purchases.map((purchase) => ({
+    id: String(purchase.id || createId()),
+    ingredientId: String(purchase.ingredientId || ""),
+    ingredientName: String(purchase.ingredientName || ""),
+    unit: String(purchase.unit || ""),
+    quantity: toNumber(purchase.quantity),
+    cost: toNumber(purchase.cost),
+    date: purchase.date || new Date().toISOString(),
+    updatedAt: purchase.updatedAt || "",
+  }));
+
+  normalized.sales = normalized.sales.map((sale) => normalizeSale(sale));
+  return normalized;
+}
+
+function normalizeSale(sale) {
+  const quantity = toNumber(sale.quantity);
+  const price = toNumber(sale.price);
+  const total = toNumber(sale.total) || quantity * price;
+  const recipeSnapshot = Array.isArray(sale.recipeSnapshot)
+    ? sale.recipeSnapshot
+        .map((line) => ({
+          ingredientId: String(line.ingredientId || ""),
+          quantity: toNumber(line.quantity),
+        }))
+        .filter((line) => line.ingredientId && line.quantity > 0)
+    : [];
+  const cmvUnit = Number.isFinite(Number(sale.cmvUnit)) ? Number(sale.cmvUnit) : null;
+  const cmvTotal = Number.isFinite(Number(sale.cmvTotal)) ? Number(sale.cmvTotal) : null;
+
+  return {
+    id: String(sale.id || createId()),
+    productId: String(sale.productId || ""),
+    productName: String(sale.productName || "Produto"),
+    quantity,
+    price,
+    total,
+    date: sale.date || new Date().toISOString(),
+    recipeSnapshot,
+    cmvUnit,
+    cmvTotal,
+    grossProfit: Number.isFinite(Number(sale.grossProfit)) ? Number(sale.grossProfit) : total - (cmvTotal || 0),
+    updatedAt: sale.updatedAt || "",
+  };
+}
 
 function loadState() {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) return clone(defaultState);
 
   try {
-    return { ...clone(defaultState), ...JSON.parse(raw) };
+    return normalizeState(JSON.parse(raw));
   } catch {
     return clone(defaultState);
   }
 }
 
 function saveState() {
+  state = normalizeState(state);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
-function registerPurchase(ingredient, quantity, cost) {
-  ingredient.stock += quantity;
-  state.purchases.push({
-    id: createId(),
-    ingredientId: ingredient.id,
-    ingredientName: ingredient.name,
-    unit: ingredient.unit,
-    quantity,
-    cost,
-    date: new Date().toISOString(),
-  });
-}
-
 function formatQuantity(value, unit) {
-  return `${Number(value).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ${escapeHtml(unit)}`;
+  return `${toNumber(value).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ${escapeHtml(unit)}`;
 }
 
 function findIngredient(id) {
@@ -170,6 +246,10 @@ function findIngredient(id) {
 
 function findProduct(id) {
   return state.products.find((item) => item.id === id);
+}
+
+function findPurchase(id) {
+  return state.purchases.find((item) => item.id === id);
 }
 
 function findSale(id) {
@@ -183,6 +263,260 @@ function ingredientOptions(selectedId = "") {
         `<option value="${item.id}" ${item.id === selectedId ? "selected" : ""}>${escapeHtml(item.name)} (${escapeHtml(item.unit)})</option>`,
     )
     .join("");
+}
+
+function productOptions(selectedId = "") {
+  return state.products
+    .map(
+      (product) =>
+        `<option value="${product.id}" ${product.id === selectedId ? "selected" : ""}>${escapeHtml(product.name)}</option>`,
+    )
+    .join("");
+}
+
+function hasNameConflict(items, name, currentId = "") {
+  return items.some((item) => item.id !== currentId && item.name.trim().toLowerCase() === name.trim().toLowerCase());
+}
+
+function getIngredientCostStats(ingredientId) {
+  const purchases = state.purchases.filter((purchase) => purchase.ingredientId === ingredientId);
+  const quantity = purchases.reduce((sum, purchase) => sum + toNumber(purchase.quantity), 0);
+  const cost = purchases.reduce((sum, purchase) => sum + toNumber(purchase.cost), 0);
+
+  return {
+    totalQuantity: quantity,
+    totalCost: cost,
+    averageCost: quantity > 0 ? cost / quantity : 0,
+  };
+}
+
+function calculateRecipeCmv(recipe) {
+  return recipe.reduce((sum, line) => {
+    const ingredient = findIngredient(line.ingredientId);
+    if (!ingredient) return sum;
+
+    const { averageCost } = getIngredientCostStats(ingredient.id);
+    return sum + averageCost * line.quantity;
+  }, 0);
+}
+
+function calculateProductCmv(product) {
+  return calculateRecipeCmv(product.recipe);
+}
+
+function getStockValue() {
+  return state.ingredients.reduce((sum, ingredient) => {
+    const { averageCost } = getIngredientCostStats(ingredient.id);
+    return sum + averageCost * ingredient.stock;
+  }, 0);
+}
+
+function createRecipeSnapshot(product) {
+  return product.recipe.map((line) => ({
+    ingredientId: line.ingredientId,
+    quantity: line.quantity,
+  }));
+}
+
+function getSaleRecipe(sale) {
+  if (sale.recipeSnapshot?.length) return sale.recipeSnapshot;
+  return findProduct(sale.productId)?.recipe || [];
+}
+
+function getSaleCmv(sale) {
+  if (Number.isFinite(Number(sale.cmvTotal))) return Number(sale.cmvTotal);
+  const recipe = getSaleRecipe(sale);
+  return calculateRecipeCmv(recipe) * sale.quantity;
+}
+
+function getSaleGrossProfit(sale) {
+  if (Number.isFinite(Number(sale.grossProfit))) return Number(sale.grossProfit);
+  return sale.total - getSaleCmv(sale);
+}
+
+function getCmvStatus(percent) {
+  if (percent < 30) return { label: "Bom", className: "" };
+  if (percent <= 40) return { label: "Atencao", className: "warn" };
+  return { label: "Ruim", className: "danger" };
+}
+
+function getCriticalItems() {
+  return state.ingredients
+    .filter((item) => item.stock <= item.min)
+    .map((item) => ({
+      ...item,
+      suggested: Math.max(item.min - item.stock, 0),
+    }));
+}
+
+function applyPurchaseToStock(purchase) {
+  const ingredient = findIngredient(purchase.ingredientId);
+  if (ingredient) ingredient.stock += purchase.quantity;
+}
+
+function removePurchaseFromStock(purchase) {
+  const ingredient = findIngredient(purchase.ingredientId);
+  if (!ingredient) return true;
+  if (ingredient.stock - purchase.quantity < -0.000001) return false;
+  ingredient.stock -= purchase.quantity;
+  return true;
+}
+
+function createPurchase(ingredient, quantity, cost) {
+  const purchase = {
+    id: createId(),
+    ingredientId: ingredient.id,
+    ingredientName: ingredient.name,
+    unit: ingredient.unit,
+    quantity,
+    cost,
+    date: new Date().toISOString(),
+  };
+  state.purchases.push(purchase);
+  applyPurchaseToStock(purchase);
+  return purchase;
+}
+
+function updatePurchase(purchase, ingredient, quantity, cost) {
+  const updated = {
+    ...purchase,
+    ingredientId: ingredient.id,
+    ingredientName: ingredient.name,
+    unit: ingredient.unit,
+    quantity,
+    cost,
+    updatedAt: new Date().toISOString(),
+  };
+
+  if (purchase.ingredientId === ingredient.id) {
+    const currentIngredient = findIngredient(purchase.ingredientId);
+    const nextStock = currentIngredient.stock - purchase.quantity + quantity;
+    if (nextStock < -0.000001) {
+      alert("Nao e possivel editar essa compra porque o estoque ficaria negativo.");
+      return false;
+    }
+    currentIngredient.stock = nextStock;
+  } else {
+    if (!removePurchaseFromStock(purchase)) {
+      alert("Nao e possivel editar essa compra porque a remocao deixaria o estoque negativo.");
+      return false;
+    }
+    applyPurchaseToStock(updated);
+  }
+
+  Object.assign(purchase, updated);
+  return true;
+}
+
+function deletePurchase(id) {
+  const purchase = findPurchase(id);
+  if (!purchase) return;
+  if (!confirm(`Deseja excluir a compra de "${purchase.ingredientName}"? O estoque sera reduzido.`)) return;
+  if (!removePurchaseFromStock(purchase)) {
+    alert("Nao e possivel excluir essa compra porque o estoque ficaria negativo.");
+    return;
+  }
+  state.purchases = state.purchases.filter((item) => item.id !== id);
+  if ($("#purchaseId").value === id) resetPurchaseForm();
+  saveState();
+  renderAll();
+}
+
+function restoreSaleStock(sale) {
+  getSaleRecipe(sale).forEach((line) => {
+    const ingredient = findIngredient(line.ingredientId);
+    if (ingredient) ingredient.stock += line.quantity * sale.quantity;
+  });
+}
+
+function deductSaleStock(sale) {
+  getSaleRecipe(sale).forEach((line) => {
+    const ingredient = findIngredient(line.ingredientId);
+    if (ingredient) ingredient.stock -= line.quantity * sale.quantity;
+  });
+}
+
+function deductProductStock(product, quantity) {
+  product.recipe.forEach((line) => {
+    const ingredient = findIngredient(line.ingredientId);
+    if (ingredient) ingredient.stock -= line.quantity * quantity;
+  });
+}
+
+function canSell(product, quantity) {
+  if (!product.recipe.length) return false;
+
+  return product.recipe.every((line) => {
+    const ingredient = findIngredient(line.ingredientId);
+    return ingredient && ingredient.stock >= line.quantity * quantity;
+  });
+}
+
+function getDateRange() {
+  const now = new Date();
+  const startOfDay = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  let start = null;
+  let end = null;
+
+  if (reportFilter.mode === "today") {
+    start = startOfDay(now);
+    end = new Date(start);
+    end.setDate(end.getDate() + 1);
+  }
+
+  if (reportFilter.mode === "week") {
+    start = startOfDay(now);
+    start.setDate(start.getDate() - start.getDay());
+    end = new Date(start);
+    end.setDate(end.getDate() + 7);
+  }
+
+  if (reportFilter.mode === "month") {
+    start = new Date(now.getFullYear(), now.getMonth(), 1);
+    end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  }
+
+  if (reportFilter.mode === "custom") {
+    start = reportFilter.start ? new Date(`${reportFilter.start}T00:00:00`) : null;
+    end = reportFilter.end ? new Date(`${reportFilter.end}T23:59:59.999`) : null;
+  }
+
+  return { start, end };
+}
+
+function isInPeriod(dateValue) {
+  const date = new Date(dateValue);
+  const { start, end } = getDateRange();
+  if (start && date < start) return false;
+  if (end && date > end) return false;
+  return true;
+}
+
+function getFilteredSales() {
+  return state.sales.filter((sale) => isInPeriod(sale.date));
+}
+
+function getFilteredPurchases() {
+  return state.purchases.filter((purchase) => isInPeriod(purchase.date));
+}
+
+function calculatePeriodMetrics() {
+  const sales = getFilteredSales();
+  const purchases = getFilteredPurchases();
+  const revenue = sales.reduce((sum, sale) => sum + toNumber(sale.total), 0);
+  const purchasesTotal = purchases.reduce((sum, purchase) => sum + toNumber(purchase.cost), 0);
+  const soldCmv = sales.reduce((sum, sale) => sum + getSaleCmv(sale), 0);
+  const grossProfit = sales.reduce((sum, sale) => sum + getSaleGrossProfit(sale), 0);
+
+  return {
+    sales,
+    purchases,
+    revenue,
+    purchasesTotal,
+    soldCmv,
+    grossProfit,
+    salesQuantity: sales.reduce((sum, sale) => sum + toNumber(sale.quantity), 0),
+  };
 }
 
 function renderAll() {
@@ -206,57 +540,42 @@ function renderSelects() {
     });
   });
 
-  $("#saleProduct").innerHTML = state.products
-    .map((product) => `<option value="${product.id}">${escapeHtml(product.name)}</option>`)
-    .join("");
-
+  $("#saleProduct").innerHTML = productOptions($("#saleProduct").value);
   const selectedProduct = findProduct($("#saleProduct").value) || state.products[0];
   $("#salePrice").value = selectedProduct ? selectedProduct.price.toFixed(2) : "";
 }
 
 function renderDashboard() {
-  const revenue = state.sales.reduce((sum, sale) => sum + sale.total, 0);
-  const costs = state.purchases.reduce((sum, purchase) => sum + purchase.cost, 0);
-  const alerts = state.ingredients.filter((item) => item.stock <= item.min);
+  const metrics = calculatePeriodMetrics();
+  const criticalItems = getCriticalItems();
 
-  $("#statRevenue").textContent = currency.format(revenue);
-  $("#statCosts").textContent = currency.format(costs);
-  $("#statProfit").textContent = currency.format(revenue - costs);
-  $("#statAlerts").textContent = alerts.length;
+  $("#statRevenue").textContent = currency.format(metrics.revenue);
+  $("#statCosts").textContent = currency.format(metrics.purchasesTotal);
+  $("#statSoldCmv").textContent = currency.format(metrics.soldCmv);
+  $("#statProfit").textContent = currency.format(metrics.grossProfit);
+  $("#statDashboardStockValue").textContent = currency.format(getStockValue());
 
   $("#alertsTable").innerHTML =
-    alerts
+    criticalItems
       .map(
         (item) => `<tr>
           <td>${escapeHtml(item.name)}</td>
           <td>${formatQuantity(item.stock, item.unit)}</td>
           <td>${formatQuantity(item.min, item.unit)}</td>
-          <td><span class="badge danger">Comprar</span></td>
+          <td><span class="badge danger">${formatQuantity(item.suggested, item.unit)}</span></td>
         </tr>`,
       )
       .join("") || `<tr><td colspan="4" class="empty">Nenhum ingrediente abaixo do minimo.</td></tr>`;
 
-  const movements = [
-    ...state.sales.map((sale) => ({ type: "Venda", date: sale.date, label: sale.productName, value: sale.total })),
-    ...state.purchases.map((purchase) => ({
-      type: "Compra",
-      date: purchase.date,
-      label: purchase.ingredientName,
-      value: purchase.cost,
-    })),
-  ]
-    .sort((a, b) => new Date(b.date) - new Date(a.date))
-    .slice(0, 8);
-
-  $("#movementList").innerHTML =
-    movements
-      .map(
-        (item) => `<li>
-          <strong>${item.type}: ${escapeHtml(item.label)}</strong>
-          <small>${dateFormat.format(new Date(item.date))} - ${currency.format(item.value)}</small>
-        </li>`,
-      )
-      .join("") || `<li class="empty">Sem movimentos registrados.</li>`;
+  $("#periodSummaryTable").innerHTML = `
+    <tr><th>Quantidade vendida</th><td>${metrics.salesQuantity.toLocaleString("pt-BR")}</td></tr>
+    <tr><th>Numero de vendas</th><td>${metrics.sales.length.toLocaleString("pt-BR")}</td></tr>
+    <tr><th>Faturamento</th><td>${currency.format(metrics.revenue)}</td></tr>
+    <tr><th>Compras realizadas</th><td>${currency.format(metrics.purchasesTotal)}</td></tr>
+    <tr><th>CMV vendido</th><td>${currency.format(metrics.soldCmv)}</td></tr>
+    <tr><th>Lucro bruto</th><td>${currency.format(metrics.grossProfit)}</td></tr>
+    <tr><th>Itens criticos</th><td>${criticalItems.length.toLocaleString("pt-BR")}</td></tr>
+  `;
 }
 
 function renderInventory() {
@@ -311,7 +630,10 @@ function renderProducts() {
         return `<article class="product-card">
           <div class="product-card-header">
             <strong>${escapeHtml(product.name)} - ${currency.format(product.price)}</strong>
-            <button class="danger-button delete-product" type="button" data-id="${product.id}">Excluir</button>
+            <div class="row-actions">
+              <button class="ghost-button edit-product" type="button" data-id="${product.id}">Editar</button>
+              <button class="danger-button delete-product" type="button" data-id="${product.id}">Excluir</button>
+            </div>
           </div>
           <small>Baixa automatica de estoque ao vender 1 unidade:</small>
           <ul>${recipeItems || "<li>Sem materia-prima cadastrada</li>"}</ul>
@@ -319,39 +641,17 @@ function renderProducts() {
       })
       .join("") || `<div class="empty">Cadastre hamburgueres e suas receitas.</div>`;
 
+  $$(".edit-product").forEach((button) => {
+    button.addEventListener("click", () => startProductEdit(button.dataset.id));
+  });
+
   $$(".delete-product").forEach((button) => {
     button.addEventListener("click", () => deleteProduct(button.dataset.id));
   });
 }
 
-function getIngredientCostStats(ingredientId) {
-  const purchases = state.purchases.filter((purchase) => purchase.ingredientId === ingredientId);
-  const quantity = purchases.reduce((sum, purchase) => sum + Number(purchase.quantity || 0), 0);
-  const cost = purchases.reduce((sum, purchase) => sum + Number(purchase.cost || 0), 0);
-
-  return {
-    totalQuantity: quantity,
-    totalCost: cost,
-    averageCost: quantity > 0 ? cost / quantity : 0,
-  };
-}
-
-function calculateProductCmv(product) {
-  return product.recipe.reduce((sum, line) => {
-    const ingredient = findIngredient(line.ingredientId);
-    if (!ingredient) return sum;
-
-    const { averageCost } = getIngredientCostStats(ingredient.id);
-    return sum + averageCost * line.quantity;
-  }, 0);
-}
-
 function renderInvestment() {
-  const stockValue = state.ingredients.reduce((sum, ingredient) => {
-    const { averageCost } = getIngredientCostStats(ingredient.id);
-    return sum + averageCost * ingredient.stock;
-  }, 0);
-  const totalPurchased = state.purchases.reduce((sum, purchase) => sum + Number(purchase.cost || 0), 0);
+  const totalPurchased = state.purchases.reduce((sum, purchase) => sum + toNumber(purchase.cost), 0);
   const productMetrics = state.products.map((product) => {
     const cmv = calculateProductCmv(product);
     const profit = product.price - cmv;
@@ -366,7 +666,7 @@ function renderInvestment() {
       ? productMetrics.reduce((sum, metric) => sum + metric.profit, 0) / productMetrics.length
       : 0;
 
-  $("#statStockValue").textContent = currency.format(stockValue);
+  $("#statStockValue").textContent = currency.format(getStockValue());
   $("#statTotalPurchased").textContent = currency.format(totalPurchased);
   $("#statAverageCmv").textContent = currency.format(averageCmv);
   $("#statAverageProductProfit").textContent = currency.format(averageProfit);
@@ -392,6 +692,7 @@ function renderInvestment() {
     productMetrics
       .map(({ product, cmv, profit }) => {
         const cmvPercent = product.price > 0 ? (cmv / product.price) * 100 : 0;
+        const status = getCmvStatus(cmvPercent);
 
         return `<tr>
           <td>${escapeHtml(product.name)}</td>
@@ -399,10 +700,11 @@ function renderInvestment() {
           <td>${currency.format(cmv)}</td>
           <td>${cmvPercent.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%</td>
           <td>${currency.format(profit)}</td>
+          <td><span class="badge ${status.className}">${status.label}</span></td>
         </tr>`;
       })
       .join("") ||
-    `<tr><td colspan="5" class="empty">Cadastre produtos com ficha tecnica para calcular o CMV.</td></tr>`;
+    `<tr><td colspan="6" class="empty">Cadastre produtos com ficha tecnica para calcular o CMV.</td></tr>`;
 }
 
 function renderPurchases() {
@@ -416,9 +718,23 @@ function renderPurchases() {
           <td>${escapeHtml(purchase.ingredientName)}</td>
           <td>${formatQuantity(purchase.quantity, purchase.unit)}</td>
           <td>${currency.format(purchase.cost)}</td>
+          <td>
+            <div class="row-actions">
+              <button class="ghost-button edit-purchase" type="button" data-id="${purchase.id}">Editar</button>
+              <button class="danger-button delete-purchase" type="button" data-id="${purchase.id}">Excluir</button>
+            </div>
+          </td>
         </tr>`,
       )
-      .join("") || `<tr><td colspan="4" class="empty">Nenhuma compra registrada.</td></tr>`;
+      .join("") || `<tr><td colspan="5" class="empty">Nenhuma compra registrada.</td></tr>`;
+
+  $$(".edit-purchase").forEach((button) => {
+    button.addEventListener("click", () => startPurchaseEdit(button.dataset.id));
+  });
+
+  $$(".delete-purchase").forEach((button) => {
+    button.addEventListener("click", () => deletePurchase(button.dataset.id));
+  });
 }
 
 function renderSales() {
@@ -468,7 +784,7 @@ function getRecipeLinesFromForm() {
   return $$(".recipe-line")
     .map((line) => ({
       ingredientId: line.querySelector(".recipe-ingredient").value,
-      quantity: Number(line.querySelector(".recipe-quantity").value),
+      quantity: toNumber(line.querySelector(".recipe-quantity").value),
     }))
     .filter((line) => line.ingredientId && line.quantity > 0);
 }
@@ -521,6 +837,58 @@ function startSaleEdit(id) {
   $("#saleQuantity").focus();
 }
 
+function resetPurchaseForm() {
+  $("#purchaseForm").reset();
+  $("#purchaseId").value = "";
+  $("#purchaseFormTitle").textContent = "Registrar compra";
+  $("#purchaseSubmit").textContent = "Salvar compra";
+  $("#cancelPurchaseEdit").classList.add("hidden");
+  renderSelects();
+}
+
+function startPurchaseEdit(id) {
+  const purchase = findPurchase(id);
+  if (!purchase) return;
+
+  document.querySelector('[data-tab="purchases"]').click();
+  $("#purchaseId").value = purchase.id;
+  $("#purchaseIngredient").value = purchase.ingredientId;
+  $("#purchaseQuantity").value = purchase.quantity;
+  $("#purchaseCost").value = Number(purchase.cost).toFixed(2);
+  $("#purchaseFormTitle").textContent = "Editar compra";
+  $("#purchaseSubmit").textContent = "Salvar alteracoes";
+  $("#cancelPurchaseEdit").classList.remove("hidden");
+  $("#purchaseQuantity").focus();
+}
+
+function resetProductForm() {
+  $("#productForm").reset();
+  $("#productId").value = "";
+  $("#productFormTitle").textContent = "Novo hamburguer";
+  $("#productSubmit").textContent = "Salvar hamburguer";
+  $("#cancelProductEdit").classList.add("hidden");
+  $("#recipeLines").innerHTML = "";
+  addRecipeLine();
+}
+
+function startProductEdit(id) {
+  const product = findProduct(id);
+  if (!product) return;
+
+  document.querySelector('[data-tab="products"]').click();
+  $("#productId").value = product.id;
+  $("#productName").value = product.name;
+  $("#productPrice").value = Number(product.price).toFixed(2);
+  $("#productFormTitle").textContent = "Editar hamburguer";
+  $("#productSubmit").textContent = "Salvar alteracoes";
+  $("#cancelProductEdit").classList.remove("hidden");
+  $("#recipeLines").innerHTML = "";
+  product.recipe.forEach((line) => addRecipeLine(line.ingredientId, line.quantity));
+  if (!product.recipe.length) addRecipeLine();
+  renderRecipePreview();
+  $("#productName").focus();
+}
+
 function resetIngredientForm() {
   $("#ingredientForm").reset();
   $("#ingredientId").value = "";
@@ -555,9 +923,31 @@ function startIngredientRestock(id) {
   const ingredient = findIngredient(id);
   if (!ingredient) return;
 
-  document.querySelector('[data-tab="purchases"]').click();
-  $("#purchaseIngredient").value = ingredient.id;
-  $("#purchaseQuantity").focus();
+  startIngredientEdit(id);
+  $("#ingredientRestockQuantity").focus();
+}
+
+function registerIngredientRestockFromForm() {
+  const ingredient = findIngredient($("#ingredientId").value);
+  const quantity = toNumber($("#ingredientRestockQuantity").value);
+  const cost = toNumber($("#ingredientRestockCost").value);
+
+  if (!ingredient) {
+    alert("Selecione uma materia-prima existente para registrar reposicao.");
+    return;
+  }
+
+  if (quantity <= 0 || cost <= 0) {
+    alert("Informe a quantidade comprada e o valor pago para registrar a reposicao.");
+    return;
+  }
+
+  createPurchase(ingredient, quantity, cost);
+  $("#ingredientStock").value = ingredient.stock;
+  $("#ingredientRestockQuantity").value = 0;
+  $("#ingredientRestockCost").value = 0;
+  saveState();
+  renderAll();
 }
 
 function deleteIngredient(id) {
@@ -593,26 +983,9 @@ function deleteProduct(id) {
   if (!confirm(`Deseja excluir "${product.name}" do cardapio? As vendas antigas continuam no historico.`)) return;
 
   state.products = state.products.filter((item) => item.id !== product.id);
+  if ($("#productId").value === id) resetProductForm();
   saveState();
   renderAll();
-}
-
-function hasIngredientNameConflict(name, currentId = "") {
-  return state.ingredients.some(
-    (item) => item.id !== currentId && item.name.trim().toLowerCase() === name.trim().toLowerCase(),
-  );
-}
-
-function availableForProduct(product) {
-  if (!product || !product.recipe.length) return 0;
-
-  return Math.min(
-    ...product.recipe.map((line) => {
-      const ingredient = findIngredient(line.ingredientId);
-      if (!ingredient) return 0;
-      return Math.floor(ingredient.stock / line.quantity);
-    }),
-  );
 }
 
 function updateSaleHint() {
@@ -624,7 +997,7 @@ function updateSaleHint() {
     return;
   }
 
-  const quantity = Number($("#saleQuantity").value) || 1;
+  const quantity = toNumber($("#saleQuantity").value) || 1;
   $("#saleHint").textContent = `Disponivel pelo estoque atual: ${availableForProduct(product)} unidade(s).`;
 
   if (!impact) return;
@@ -640,46 +1013,147 @@ function updateSaleHint() {
       .join("") || "<li>Esse produto nao possui ficha tecnica.</li>";
 }
 
-function canSell(product, quantity) {
-  if (!product.recipe.length) return false;
+function availableForProduct(product) {
+  if (!product || !product.recipe.length) return 0;
 
-  return product.recipe.every((line) => {
-    const ingredient = findIngredient(line.ingredientId);
-    return ingredient && ingredient.stock >= line.quantity * quantity;
+  return Math.min(
+    ...product.recipe.map((line) => {
+      const ingredient = findIngredient(line.ingredientId);
+      if (!ingredient) return 0;
+      return Math.floor(ingredient.stock / line.quantity);
+    }),
+  );
+}
+
+function validateBackup(data) {
+  if (!data || typeof data !== "object") return false;
+  return ["ingredients", "products", "purchases", "sales"].every((key) => Array.isArray(data[key]));
+}
+
+function downloadText(filename, text, type) {
+  const blob = new Blob([text], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function exportBackup() {
+  const payload = JSON.stringify(normalizeState(state), null, 2);
+  downloadText(`burgerstock-backup-${new Date().toISOString().slice(0, 10)}.json`, payload, "application/json");
+}
+
+function importBackupFile(file) {
+  const reader = new FileReader();
+  reader.addEventListener("load", () => {
+    try {
+      const parsed = JSON.parse(String(reader.result));
+      if (!validateBackup(parsed)) {
+        alert("Backup invalido. O arquivo precisa conter ingredients, products, purchases e sales.");
+        return;
+      }
+      if (!confirm("Importar este backup vai substituir todos os dados atuais. Deseja continuar?")) return;
+      state = normalizeState(parsed);
+      saveState();
+      resetSaleForm();
+      resetPurchaseForm();
+      resetProductForm();
+      resetIngredientForm();
+      renderAll();
+      alert("Backup importado com sucesso.");
+    } catch {
+      alert("Nao foi possivel ler o arquivo JSON.");
+    }
   });
+  reader.readAsText(file);
 }
 
-function createRecipeSnapshot(product) {
-  return product.recipe.map((line) => ({
-    ingredientId: line.ingredientId,
-    quantity: line.quantity,
-  }));
+function csvEscape(value) {
+  const text = String(value ?? "");
+  return `"${text.replace(/"/g, '""')}"`;
 }
 
-function getSaleRecipe(sale) {
-  if (sale.recipeSnapshot?.length) return sale.recipeSnapshot;
-  return findProduct(sale.productId)?.recipe || [];
+function toCsv(rows) {
+  return `\ufeff${rows.map((row) => row.map(csvEscape).join(";")).join("\n")}`;
 }
 
-function restoreSaleStock(sale) {
-  getSaleRecipe(sale).forEach((line) => {
-    const ingredient = findIngredient(line.ingredientId);
-    if (ingredient) ingredient.stock += line.quantity * sale.quantity;
-  });
+function exportCsv(report) {
+  const today = new Date().toISOString().slice(0, 10);
+  const rowsByReport = {
+    sales: getSalesCsvRows,
+    purchases: getPurchasesCsvRows,
+    inventory: getInventoryCsvRows,
+    products: getProductsCsvRows,
+    cmv: getCmvCsvRows,
+  };
+  const getRows = rowsByReport[report];
+  if (!getRows) return;
+  downloadText(`burgerstock-${report}-${today}.csv`, toCsv(getRows()), "text/csv;charset=utf-8");
 }
 
-function deductSaleStock(sale) {
-  getSaleRecipe(sale).forEach((line) => {
-    const ingredient = findIngredient(line.ingredientId);
-    if (ingredient) ingredient.stock -= line.quantity * sale.quantity;
-  });
+function getSalesCsvRows() {
+  return [
+    ["Data", "Produto", "Quantidade", "Preco unitario", "Total", "CMV vendido", "Lucro bruto"],
+    ...getFilteredSales().map((sale) => [
+      fileDateFormat.format(new Date(sale.date)),
+      sale.productName,
+      sale.quantity,
+      sale.price,
+      sale.total,
+      getSaleCmv(sale),
+      getSaleGrossProfit(sale),
+    ]),
+  ];
 }
 
-function deductProductStock(product, quantity) {
-  product.recipe.forEach((line) => {
-    const ingredient = findIngredient(line.ingredientId);
-    if (ingredient) ingredient.stock -= line.quantity * quantity;
-  });
+function getPurchasesCsvRows() {
+  return [
+    ["Data", "Materia-prima", "Quantidade", "Unidade", "Custo total"],
+    ...getFilteredPurchases().map((purchase) => [
+      fileDateFormat.format(new Date(purchase.date)),
+      purchase.ingredientName,
+      purchase.quantity,
+      purchase.unit,
+      purchase.cost,
+    ]),
+  ];
+}
+
+function getInventoryCsvRows() {
+  return [
+    ["Materia-prima", "Unidade", "Estoque atual", "Estoque minimo", "Custo medio", "Valor investido"],
+    ...state.ingredients.map((ingredient) => {
+      const { averageCost } = getIngredientCostStats(ingredient.id);
+      return [ingredient.name, ingredient.unit, ingredient.stock, ingredient.min, averageCost, averageCost * ingredient.stock];
+    }),
+  ];
+}
+
+function getProductsCsvRows() {
+  return [
+    ["Produto", "Preco", "Materia-prima", "Quantidade usada", "Unidade"],
+    ...state.products.flatMap((product) =>
+      product.recipe.map((line) => {
+        const ingredient = findIngredient(line.ingredientId);
+        return [product.name, product.price, ingredient?.name || "", line.quantity, ingredient?.unit || ""];
+      }),
+    ),
+  ];
+}
+
+function getCmvCsvRows() {
+  return [
+    ["Produto", "Preco", "CMV", "CMV %", "Lucro medio", "Status"],
+    ...state.products.map((product) => {
+      const cmv = calculateProductCmv(product);
+      const percent = product.price > 0 ? (cmv / product.price) * 100 : 0;
+      return [product.name, product.price, cmv, percent, product.price - cmv, getCmvStatus(percent).label];
+    }),
+  ];
 }
 
 function bindEvents() {
@@ -692,23 +1166,34 @@ function bindEvents() {
     });
   });
 
+  $("#periodMode").addEventListener("change", () => {
+    reportFilter.mode = $("#periodMode").value;
+    renderAll();
+  });
+  $("#periodStart").addEventListener("change", () => {
+    reportFilter.start = $("#periodStart").value;
+    reportFilter.mode = "custom";
+    $("#periodMode").value = "custom";
+    renderAll();
+  });
+  $("#periodEnd").addEventListener("change", () => {
+    reportFilter.end = $("#periodEnd").value;
+    reportFilter.mode = "custom";
+    $("#periodMode").value = "custom";
+    renderAll();
+  });
+
   $("#ingredientForm").addEventListener("submit", (event) => {
     event.preventDefault();
     const ingredientId = $("#ingredientId").value;
     const name = $("#ingredientName").value.trim();
     const unit = $("#ingredientUnit").value;
-    const stock = Number($("#ingredientStock").value);
-    const min = Number($("#ingredientMin").value);
-    const restockQuantity = Number($("#ingredientRestockQuantity").value);
-    const restockCost = Number($("#ingredientRestockCost").value);
+    const stock = toNumber($("#ingredientStock").value);
+    const min = toNumber($("#ingredientMin").value);
 
-    if (hasIngredientNameConflict(name, ingredientId)) {
+    if (!name) return;
+    if (hasNameConflict(state.ingredients, name, ingredientId)) {
       alert("Ja existe uma materia-prima com esse nome. Edite o item existente ou escolha outro nome.");
-      return;
-    }
-
-    if ((restockQuantity > 0 && restockCost <= 0) || (restockCost > 0 && restockQuantity <= 0)) {
-      alert("Para registrar investimento, informe a quantidade comprada e o valor pago.");
       return;
     }
 
@@ -721,17 +1206,9 @@ function bindEvents() {
       ingredient.stock = stock;
       ingredient.min = min;
     } else {
-      ingredient = {
-        id: createId(),
-        name,
-        unit,
-        stock,
-        min,
-      };
+      ingredient = { id: createId(), name, unit, stock, min };
       state.ingredients.push(ingredient);
     }
-
-    if (restockQuantity > 0) registerPurchase(ingredient, restockQuantity, restockCost);
 
     resetIngredientForm();
     saveState();
@@ -739,43 +1216,68 @@ function bindEvents() {
   });
 
   $("#cancelIngredientEdit").addEventListener("click", resetIngredientForm);
+  $("#registerIngredientRestock").addEventListener("click", registerIngredientRestockFromForm);
 
   $("#purchaseForm").addEventListener("submit", (event) => {
     event.preventDefault();
+    const purchaseId = $("#purchaseId").value;
     const ingredient = findIngredient($("#purchaseIngredient").value);
-    if (!ingredient) return;
+    const quantity = toNumber($("#purchaseQuantity").value);
+    const cost = toNumber($("#purchaseCost").value);
+    if (!ingredient || quantity <= 0 || cost < 0) return;
 
-    const quantity = Number($("#purchaseQuantity").value);
-    const cost = Number($("#purchaseCost").value);
-    registerPurchase(ingredient, quantity, cost);
-    event.currentTarget.reset();
+    if (purchaseId) {
+      const purchase = findPurchase(purchaseId);
+      if (!purchase || !updatePurchase(purchase, ingredient, quantity, cost)) return;
+    } else {
+      createPurchase(ingredient, quantity, cost);
+    }
+
+    resetPurchaseForm();
     saveState();
     renderAll();
   });
+
+  $("#cancelPurchaseEdit").addEventListener("click", resetPurchaseForm);
 
   $("#addRecipeLine").addEventListener("click", () => addRecipeLine());
 
   $("#productForm").addEventListener("submit", (event) => {
     event.preventDefault();
+    const productId = $("#productId").value;
+    const name = $("#productName").value.trim();
+    const price = toNumber($("#productPrice").value);
     const recipe = getRecipeLinesFromForm();
 
+    if (!name || price <= 0) {
+      alert("Informe nome e preco de venda validos.");
+      return;
+    }
     if (!recipe.length) {
       alert("Adicione pelo menos um ingrediente na receita.");
       return;
     }
+    if (hasNameConflict(state.products, name, productId)) {
+      alert("Ja existe um produto com esse nome.");
+      return;
+    }
 
-    state.products.push({
-      id: createId(),
-      name: $("#productName").value.trim(),
-      price: Number($("#productPrice").value),
-      recipe,
-    });
-    event.currentTarget.reset();
-    $("#recipeLines").innerHTML = "";
-    addRecipeLine();
+    if (productId) {
+      const product = findProduct(productId);
+      if (!product) return;
+      product.name = name;
+      product.price = price;
+      product.recipe = recipe;
+    } else {
+      state.products.push({ id: createId(), name, price, recipe });
+    }
+
+    resetProductForm();
     saveState();
     renderAll();
   });
+
+  $("#cancelProductEdit").addEventListener("click", resetProductForm);
 
   $("#saleProduct").addEventListener("change", () => {
     const product = findProduct($("#saleProduct").value);
@@ -790,8 +1292,8 @@ function bindEvents() {
     const saleId = $("#saleId").value;
     const saleBeingEdited = saleId ? findSale(saleId) : null;
     const product = findProduct($("#saleProduct").value);
-    const quantity = Number($("#saleQuantity").value);
-    const price = Number($("#salePrice").value);
+    const quantity = toNumber($("#saleQuantity").value);
+    const price = toNumber($("#salePrice").value);
     if (!product || quantity <= 0) return;
 
     if (saleBeingEdited) restoreSaleStock(saleBeingEdited);
@@ -802,6 +1304,12 @@ function bindEvents() {
       return;
     }
 
+    const recipeSnapshot = createRecipeSnapshot(product);
+    const cmvUnit = calculateRecipeCmv(recipeSnapshot);
+    const total = quantity * price;
+    const cmvTotal = cmvUnit * quantity;
+    const grossProfit = total - cmvTotal;
+
     deductProductStock(product, quantity);
 
     if (saleBeingEdited) {
@@ -809,8 +1317,11 @@ function bindEvents() {
       saleBeingEdited.productName = product.name;
       saleBeingEdited.quantity = quantity;
       saleBeingEdited.price = price;
-      saleBeingEdited.total = quantity * price;
-      saleBeingEdited.recipeSnapshot = createRecipeSnapshot(product);
+      saleBeingEdited.total = total;
+      saleBeingEdited.recipeSnapshot = recipeSnapshot;
+      saleBeingEdited.cmvUnit = cmvUnit;
+      saleBeingEdited.cmvTotal = cmvTotal;
+      saleBeingEdited.grossProfit = grossProfit;
       saleBeingEdited.updatedAt = new Date().toISOString();
     } else {
       state.sales.push({
@@ -819,9 +1330,12 @@ function bindEvents() {
         productName: product.name,
         quantity,
         price,
-        total: quantity * price,
+        total,
         date: new Date().toISOString(),
-        recipeSnapshot: createRecipeSnapshot(product),
+        recipeSnapshot,
+        cmvUnit,
+        cmvTotal,
+        grossProfit,
       });
     }
 
@@ -833,10 +1347,9 @@ function bindEvents() {
   $("#cancelSaleEdit").addEventListener("click", resetSaleForm);
 
   $("#seedData").addEventListener("click", () => {
-    state = clone(exampleState);
+    state = normalizeState(exampleState);
     saveState();
-    $("#recipeLines").innerHTML = "";
-    addRecipeLine();
+    resetProductForm();
     renderAll();
   });
 
@@ -844,9 +1357,23 @@ function bindEvents() {
     if (!confirm("Deseja apagar todos os dados cadastrados?")) return;
     state = clone(defaultState);
     localStorage.removeItem(STORAGE_KEY);
-    $("#recipeLines").innerHTML = "";
-    addRecipeLine();
+    resetProductForm();
+    resetSaleForm();
+    resetPurchaseForm();
+    resetIngredientForm();
     renderAll();
+  });
+
+  $("#exportBackup").addEventListener("click", exportBackup);
+  $("#importBackup").addEventListener("click", () => $("#backupFile").click());
+  $("#backupFile").addEventListener("change", (event) => {
+    const file = event.target.files?.[0];
+    if (file) importBackupFile(file);
+    event.target.value = "";
+  });
+
+  $$(".export-csv").forEach((button) => {
+    button.addEventListener("click", () => exportCsv(button.dataset.report));
   });
 }
 

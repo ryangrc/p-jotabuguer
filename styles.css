@@ -173,7 +173,7 @@ h2 {
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 14px;
   margin-bottom: 18px;
 }
@@ -268,7 +268,8 @@ form button[type="submit"],
 }
 
 .form-actions,
-.row-actions {
+.row-actions,
+.export-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -292,6 +293,22 @@ form button[type="submit"],
 
 .hidden {
   display: none;
+}
+
+.filter-panel,
+.exports-panel {
+  margin-bottom: 18px;
+}
+
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+  gap: 14px;
+  padding: 18px;
+}
+
+.export-actions {
+  padding: 16px 18px;
 }
 
 form button[type="submit"] {
@@ -362,6 +379,11 @@ th:last-child {
 .badge.danger {
   background: #ffe6e3;
   color: var(--danger);
+}
+
+.badge.neutral {
+  background: #eef1f4;
+  color: #58636d;
 }
 
 .movement-list,
@@ -509,6 +531,10 @@ th:last-child {
   .stats-grid,
   .grid-two {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .filter-grid {
+    grid-template-columns: 1fr;
   }
 }
 

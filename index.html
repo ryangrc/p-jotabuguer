@@ -39,38 +39,72 @@
           </div>
           <div class="topbar-actions">
             <button id="seedData" class="ghost-button" type="button">Carregar exemplo</button>
+            <button id="exportBackup" class="ghost-button" type="button">Exportar backup</button>
+            <button id="importBackup" class="ghost-button" type="button">Importar backup</button>
             <button id="clearData" class="danger-button" type="button">Limpar dados</button>
           </div>
+          <input id="backupFile" class="hidden" type="file" accept="application/json,.json" />
         </header>
 
         <section id="dashboard" class="tab-panel active">
+          <section class="panel filter-panel">
+            <div class="panel-header">
+              <h2>Relatorio por periodo</h2>
+            </div>
+            <div class="filter-grid">
+              <label>
+                Periodo
+                <select id="periodMode">
+                  <option value="all">Todo periodo</option>
+                  <option value="today">Hoje</option>
+                  <option value="week">Semana</option>
+                  <option value="month">Mes</option>
+                  <option value="custom">Personalizado</option>
+                </select>
+              </label>
+              <label>
+                Inicio
+                <input id="periodStart" type="date" />
+              </label>
+              <label>
+                Fim
+                <input id="periodEnd" type="date" />
+              </label>
+            </div>
+          </section>
+
           <div class="stats-grid">
             <article class="stat-card">
               <span>Faturamento</span>
               <strong id="statRevenue">R$ 0,00</strong>
-              <small>Total vendido</small>
+              <small>Vendas no periodo</small>
             </article>
             <article class="stat-card">
-              <span>Gastos</span>
+              <span>Compras realizadas</span>
               <strong id="statCosts">R$ 0,00</strong>
-              <small>Total comprado</small>
+              <small>Compras no periodo</small>
             </article>
             <article class="stat-card">
-              <span>Lucro estimado</span>
+              <span>CMV vendido</span>
+              <strong id="statSoldCmv">R$ 0,00</strong>
+              <small>Custo das vendas</small>
+            </article>
+            <article class="stat-card">
+              <span>Lucro bruto</span>
               <strong id="statProfit">R$ 0,00</strong>
-              <small>Vendas menos compras</small>
+              <small>Faturamento menos CMV</small>
             </article>
             <article class="stat-card">
-              <span>Itens em alerta</span>
-              <strong id="statAlerts">0</strong>
-              <small>Abaixo do minimo</small>
+              <span>Investido em estoque</span>
+              <strong id="statDashboardStockValue">R$ 0,00</strong>
+              <small>Saldo atual x custo medio</small>
             </article>
           </div>
 
           <div class="grid-two">
             <section class="panel">
               <div class="panel-header">
-                <h2>Alertas de estoque</h2>
+                <h2>Estoque critico e lista de compra</h2>
               </div>
               <div class="table-wrap">
                 <table>
@@ -79,7 +113,7 @@
                       <th>Ingrediente</th>
                       <th>Saldo</th>
                       <th>Minimo</th>
-                      <th>Status</th>
+                      <th>Sugerido comprar</th>
                     </tr>
                   </thead>
                   <tbody id="alertsTable"></tbody>
@@ -89,11 +123,28 @@
 
             <section class="panel">
               <div class="panel-header">
-                <h2>Ultimos movimentos</h2>
+                <h2>Resumo do periodo</h2>
               </div>
-              <ul id="movementList" class="movement-list"></ul>
+              <div class="table-wrap">
+                <table>
+                  <tbody id="periodSummaryTable"></tbody>
+                </table>
+              </div>
             </section>
           </div>
+
+          <section class="panel exports-panel">
+            <div class="panel-header">
+              <h2>Exportar relatorios CSV</h2>
+            </div>
+            <div class="export-actions">
+              <button class="ghost-button export-csv" type="button" data-report="sales">Vendas</button>
+              <button class="ghost-button export-csv" type="button" data-report="purchases">Compras</button>
+              <button class="ghost-button export-csv" type="button" data-report="inventory">Estoque</button>
+              <button class="ghost-button export-csv" type="button" data-report="products">Produtos</button>
+              <button class="ghost-button export-csv" type="button" data-report="cmv">CMV e lucro</button>
+            </div>
+          </section>
         </section>
 
         <section id="sales" class="tab-panel">
@@ -152,8 +203,9 @@
           <div class="grid-two">
             <form id="purchaseForm" class="panel form-panel">
               <div class="panel-header">
-                <h2>Registrar compra</h2>
+                <h2 id="purchaseFormTitle">Registrar compra</h2>
               </div>
+              <input id="purchaseId" type="hidden" />
               <label>
                 Ingrediente
                 <select id="purchaseIngredient" required></select>
@@ -166,7 +218,10 @@
                 Custo total
                 <input id="purchaseCost" type="number" min="0" step="0.01" required />
               </label>
-              <button type="submit">Salvar compra</button>
+              <div class="form-actions">
+                <button id="purchaseSubmit" type="submit">Salvar compra</button>
+                <button id="cancelPurchaseEdit" class="ghost-button hidden" type="button">Cancelar edicao</button>
+              </div>
             </form>
 
             <section class="panel">
@@ -181,6 +236,7 @@
                       <th>Ingrediente</th>
                       <th>Qtd.</th>
                       <th>Custo</th>
+                      <th>Acoes</th>
                     </tr>
                   </thead>
                   <tbody id="purchasesTable"></tbody>
@@ -230,6 +286,7 @@
                   Valor pago nessa compra
                   <input id="ingredientRestockCost" type="number" min="0" step="0.01" value="0" />
                 </label>
+                <button id="registerIngredientRestock" class="ghost-button" type="button">Registrar reposicao</button>
               </div>
               <div class="form-actions">
                 <button id="ingredientSubmit" type="submit">Adicionar ingrediente</button>
@@ -263,8 +320,9 @@
           <div class="grid-two">
             <form id="productForm" class="panel form-panel">
               <div class="panel-header">
-                <h2>Novo hamburguer</h2>
+                <h2 id="productFormTitle">Novo hamburguer</h2>
               </div>
+              <input id="productId" type="hidden" />
               <label>
                 Nome
                 <input id="productName" type="text" placeholder="Ex.: Smash duplo" required />
@@ -287,7 +345,10 @@
                   <ul id="recipePreview"></ul>
                 </div>
               </div>
-              <button type="submit">Salvar hamburguer</button>
+              <div class="form-actions">
+                <button id="productSubmit" type="submit">Salvar hamburguer</button>
+                <button id="cancelProductEdit" class="ghost-button hidden" type="button">Cancelar edicao</button>
+              </div>
             </form>
 
             <section class="panel">
@@ -357,6 +418,7 @@
                       <th>CMV</th>
                       <th>CMV %</th>
                       <th>Lucro medio</th>
+                      <th>Status</th>
                     </tr>
                   </thead>
                   <tbody id="productCmvTable"></tbody>

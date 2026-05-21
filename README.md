@@ -12,17 +12,21 @@ Os dados ficam salvos no proprio navegador usando `localStorage`. Para testar ra
 
 - Cadastro de ingredientes com unidade, estoque inicial e estoque minimo.
 - Edicao de materias-primas ja cadastradas, evitando duplicidade de nomes no estoque.
-- Reposicao de materia-prima pela tela de ingrediente, informando quantidade comprada e valor pago para atualizar investimento e CMV.
+- Reposicao de materia-prima por botao proprio na tela de ingrediente, informando quantidade comprada e valor pago para atualizar investimento e CMV sem duplicar compras ao editar.
 - Exclusao de materias-primas, removendo o item das fichas tecnicas vinculadas.
 - Registro de compras, somando automaticamente ao estoque.
+- Edicao e exclusao de compras antigas com correcao do impacto no estoque.
 - Cadastro de hamburgueres com preco de venda e ficha tecnica de estoque.
+- Edicao completa de hamburgueres, incluindo nome, preco e ficha tecnica.
 - Exclusao de produtos do cardapio sem apagar vendas antigas do historico.
 - Inclusao de varias materias-primas no mesmo produto, com quantidade usada por unidade vendida.
 - Aba de investimento com custo medio, valor investido por materia-prima, CMV e lucro medio por produto.
 - Registro de vendas, baixando automaticamente todos os ingredientes da ficha tecnica.
 - Edicao do historico de vendas, devolvendo o estoque antigo e aplicando a baixa corrigida.
 - Bloqueio de venda quando o estoque nao cobre a receita.
-- Painel com faturamento, gastos, lucro estimado e alertas de estoque baixo.
+- Painel financeiro com faturamento, compras, CMV vendido, lucro bruto, estoque investido e lista de compra sugerida.
+- Backup/restauracao em JSON e exportacao de relatorios CSV.
+- Relatorio por periodo com filtros de hoje, semana, mes e intervalo personalizado.
 
 ## Arquivos
 
