@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>P'jotabuguer - Registro de Compras e Vendas</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <div>
+            <strong>P'jotabuguer</strong>
+            <small>Compra, venda e estoque</small>
+          </div>
+        </div>
+
+        <nav class="tabs" aria-label="Navegacao principal">
+          <button class="tab-button active" data-tab="dashboard" type="button">Painel</button>
+          <button class="tab-button" data-tab="sales" type="button">Vendas</button>
+          <button class="tab-button" data-tab="purchases" type="button">Compras</button>
+          <button class="tab-button" data-tab="inventory" type="button">Estoque</button>
+          <button class="tab-button" data-tab="products" type="button">Hamburgueres</button>
+          <button class="tab-button" data-tab="investment" type="button">Investimento</button>
+        </nav>
+      </aside>
+
+      <section class="content">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Sistema de registro</p>
+            <h1>Controle operacional da hamburgueria</h1>
+          </div>
+          <div class="topbar-actions">
+            <button id="seedData" class="ghost-button" type="button">Carregar exemplo</button>
+            <button id="clearData" class="danger-button" type="button">Limpar dados</button>
+          </div>
+        </header>
+
+        <section id="dashboard" class="tab-panel active">
+          <div class="stats-grid">
+            <article class="stat-card">
+              <span>Faturamento</span>
+              <strong id="statRevenue">R$ 0,00</strong>
+              <small>Total vendido</small>
+            </article>
+            <article class="stat-card">
+              <span>Gastos</span>
+              <strong id="statCosts">R$ 0,00</strong>
+              <small>Total comprado</small>
+            </article>
+            <article class="stat-card">
+              <span>Lucro estimado</span>
+              <strong id="statProfit">R$ 0,00</strong>
+              <small>Vendas menos compras</small>
+            </article>
+            <article class="stat-card">
+              <span>Itens em alerta</span>
+              <strong id="statAlerts">0</strong>
+              <small>Abaixo do minimo</small>
+            </article>
+          </div>
+
+          <div class="grid-two">
+            <section class="panel">
+              <div class="panel-header">
+                <h2>Alertas de estoque</h2>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Ingrediente</th>
+                      <th>Saldo</th>
+                      <th>Minimo</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="alertsTable"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <h2>Ultimos movimentos</h2>
+              </div>
+              <ul id="movementList" class="movement-list"></ul>
+            </section>
+          </div>
+        </section>
+
+        <section id="sales" class="tab-panel">
+          <div class="grid-two">
+            <form id="saleForm" class="panel form-panel">
+              <div class="panel-header">
+                <h2 id="saleFormTitle">Registrar venda</h2>
+              </div>
+              <input id="saleId" type="hidden" />
+              <label>
+                Hamburguer
+                <select id="saleProduct" required></select>
+              </label>
+              <label>
+                Quantidade
+                <input id="saleQuantity" type="number" min="1" step="1" value="1" required />
+              </label>
+              <label>
+                Preco unitario
+                <input id="salePrice" type="number" min="0" step="0.01" required />
+              </label>
+              <div class="form-actions">
+                <button id="saleSubmit" type="submit">Salvar venda</button>
+                <button id="cancelSaleEdit" class="ghost-button hidden" type="button">Cancelar edicao</button>
+              </div>
+              <p id="saleHint" class="hint"></p>
+              <div class="recipe-preview compact">
+                <strong>Baixa prevista nessa venda:</strong>
+                <ul id="saleStockImpact"></ul>
+              </div>
+            </form>
+
+            <section class="panel">
+              <div class="panel-header">
+                <h2>Historico de vendas</h2>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Data</th>
+                      <th>Hamburguer</th>
+                      <th>Qtd.</th>
+                      <th>Total</th>
+                      <th>Acoes</th>
+                    </tr>
+                  </thead>
+                  <tbody id="salesTable"></tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section id="purchases" class="tab-panel">
+          <div class="grid-two">
+            <form id="purchaseForm" class="panel form-panel">
+              <div class="panel-header">
+                <h2>Registrar compra</h2>
+              </div>
+              <label>
+                Ingrediente
+                <select id="purchaseIngredient" required></select>
+              </label>
+              <label>
+                Quantidade comprada
+                <input id="purchaseQuantity" type="number" min="0.01" step="0.01" required />
+              </label>
+              <label>
+                Custo total
+                <input id="purchaseCost" type="number" min="0" step="0.01" required />
+              </label>
+              <button type="submit">Salvar compra</button>
+            </form>
+
+            <section class="panel">
+              <div class="panel-header">
+                <h2>Historico de compras</h2>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Data</th>
+                      <th>Ingrediente</th>
+                      <th>Qtd.</th>
+                      <th>Custo</th>
+                    </tr>
+                  </thead>
+                  <tbody id="purchasesTable"></tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section id="inventory" class="tab-panel">
+          <div class="grid-two">
+            <form id="ingredientForm" class="panel form-panel">
+              <div class="panel-header">
+                <h2 id="ingredientFormTitle">Novo ingrediente</h2>
+              </div>
+              <input id="ingredientId" type="hidden" />
+              <label>
+                Nome
+                <input id="ingredientName" type="text" placeholder="Ex.: Pao brioche" required />
+              </label>
+              <label>
+                Unidade
+                <select id="ingredientUnit">
+                  <option value="un">un</option>
+                  <option value="g">g</option>
+                  <option value="kg">kg</option>
+                  <option value="ml">ml</option>
+                  <option value="l">l</option>
+                </select>
+              </label>
+              <label>
+                Saldo atual
+                <input id="ingredientStock" type="number" min="0" step="0.01" value="0" required />
+              </label>
+              <label>
+                Estoque minimo
+                <input id="ingredientMin" type="number" min="0" step="0.01" value="0" required />
+              </label>
+              <div class="recipe-preview compact">
+                <strong>Reposicao / investimento</strong>
+                <small>Use quando comprar materia-prima. A quantidade sera somada ao saldo e o valor entra no CMV.</small>
+                <label>
+                  Quantidade comprada
+                  <input id="ingredientRestockQuantity" type="number" min="0" step="0.01" value="0" />
+                </label>
+                <label>
+                  Valor pago nessa compra
+                  <input id="ingredientRestockCost" type="number" min="0" step="0.01" value="0" />
+                </label>
+              </div>
+              <div class="form-actions">
+                <button id="ingredientSubmit" type="submit">Adicionar ingrediente</button>
+                <button id="cancelIngredientEdit" class="ghost-button hidden" type="button">Cancelar edicao</button>
+              </div>
+            </form>
+
+            <section class="panel">
+              <div class="panel-header">
+                <h2>Estoque atual</h2>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Ingrediente</th>
+                      <th>Saldo</th>
+                      <th>Minimo</th>
+                      <th>Status</th>
+                      <th>Acoes</th>
+                    </tr>
+                  </thead>
+                  <tbody id="inventoryTable"></tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section id="products" class="tab-panel">
+          <div class="grid-two">
+            <form id="productForm" class="panel form-panel">
+              <div class="panel-header">
+                <h2>Novo hamburguer</h2>
+              </div>
+              <label>
+                Nome
+                <input id="productName" type="text" placeholder="Ex.: Smash duplo" required />
+              </label>
+              <label>
+                Preco de venda
+                <input id="productPrice" type="number" min="0" step="0.01" required />
+              </label>
+              <div>
+                <div class="recipe-header">
+                  <div>
+                    <strong>Ficha tecnica do estoque</strong>
+                    <small>Informe todas as materias-primas usadas em 1 unidade vendida.</small>
+                  </div>
+                  <button id="addRecipeLine" class="ghost-button" type="button">+ Materia-prima</button>
+                </div>
+                <div id="recipeLines" class="recipe-lines"></div>
+                <div class="recipe-preview">
+                  <strong>Ao vender 1 unidade, o sistema vai baixar:</strong>
+                  <ul id="recipePreview"></ul>
+                </div>
+              </div>
+              <button type="submit">Salvar hamburguer</button>
+            </form>
+
+            <section class="panel">
+              <div class="panel-header">
+                <h2>Cardapio cadastrado</h2>
+              </div>
+              <div id="productList" class="product-list"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="investment" class="tab-panel">
+          <div class="stats-grid">
+            <article class="stat-card">
+              <span>Investido em estoque</span>
+              <strong id="statStockValue">R$ 0,00</strong>
+              <small>Saldo atual x custo medio</small>
+            </article>
+            <article class="stat-card">
+              <span>Total comprado</span>
+              <strong id="statTotalPurchased">R$ 0,00</strong>
+              <small>Historico de compras</small>
+            </article>
+            <article class="stat-card">
+              <span>CMV medio</span>
+              <strong id="statAverageCmv">R$ 0,00</strong>
+              <small>Media dos produtos</small>
+            </article>
+            <article class="stat-card">
+              <span>Lucro medio</span>
+              <strong id="statAverageProductProfit">R$ 0,00</strong>
+              <small>Preco menos CMV</small>
+            </article>
+          </div>
+
+          <div class="grid-two">
+            <section class="panel">
+              <div class="panel-header">
+                <h2>Investimento por materia-prima</h2>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Materia-prima</th>
+                      <th>Custo medio</th>
+                      <th>Total comprado</th>
+                      <th>Estoque</th>
+                      <th>Investido</th>
+                    </tr>
+                  </thead>
+                  <tbody id="ingredientInvestmentTable"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <h2>CMV e lucro por produto</h2>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Produto</th>
+                      <th>Preco</th>
+                      <th>CMV</th>
+                      <th>CMV %</th>
+                      <th>Lucro medio</th>
+                    </tr>
+                  </thead>
+                  <tbody id="productCmvTable"></tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <template id="recipeLineTemplate">
+      <div class="recipe-line">
+        <label>
+          Materia-prima
+          <select class="recipe-ingredient" required></select>
+        </label>
+        <label>
+          Qtd. usada
+          <input class="recipe-quantity" type="number" min="0.01" step="0.01" placeholder="Ex.: 1" required />
+        </label>
+        <button class="icon-button remove-line" type="button" title="Remover materia-prima">x</button>
+      </div>
+    </template>
+
+    <script src="app.js"></script>
+  </body>
+</html>
