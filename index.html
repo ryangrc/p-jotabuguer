@@ -7,7 +7,56 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <main class="app-shell">
+    <section id="authScreen" class="auth-screen">
+      <div class="auth-card">
+        <div class="brand auth-brand">
+          <div class="brand-mark" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <div>
+            <strong>P'jotabuguer</strong>
+            <small>Acesso operacional</small>
+          </div>
+        </div>
+
+        <form id="setupForm" class="auth-form hidden">
+          <h1>Criar administrador</h1>
+          <p class="hint">O primeiro acesso criado tera permissao total no sistema.</p>
+          <label>
+            Nome
+            <input id="setupName" type="text" required />
+          </label>
+          <label>
+            Email
+            <input id="setupEmail" type="email" required />
+          </label>
+          <label>
+            Senha alfanumerica
+            <input id="setupPassword" type="password" minlength="8" required />
+          </label>
+          <button type="submit">Criar administrador</button>
+          <p id="setupMessage" class="hint"></p>
+        </form>
+
+        <form id="loginForm" class="auth-form hidden">
+          <h1>Entrar no sistema</h1>
+          <label>
+            Email
+            <input id="loginEmail" type="email" required />
+          </label>
+          <label>
+            Senha
+            <input id="loginPassword" type="password" required />
+          </label>
+          <button type="submit">Entrar</button>
+          <p id="loginMessage" class="hint"></p>
+        </form>
+      </div>
+    </section>
+
+    <main class="app-shell hidden">
       <aside class="sidebar">
         <div class="brand">
           <div class="brand-mark" aria-hidden="true">
@@ -24,11 +73,12 @@
         <nav class="tabs" aria-label="Navegacao principal">
           <button class="tab-button active" data-tab="dashboard" type="button">Painel</button>
           <button class="tab-button" data-tab="sales" type="button">Vendas</button>
-          <button class="tab-button" data-tab="purchases" type="button">Compras</button>
-          <button class="tab-button" data-tab="inventory" type="button">Estoque</button>
-          <button class="tab-button" data-tab="products" type="button">Hamburgueres</button>
+          <button class="tab-button admin-only" data-tab="purchases" type="button">Compras</button>
+          <button class="tab-button admin-only" data-tab="inventory" type="button">Estoque</button>
+          <button class="tab-button admin-only" data-tab="products" type="button">Hamburgueres</button>
           <button class="tab-button" data-tab="menu" type="button">Cardapio</button>
-          <button class="tab-button" data-tab="investment" type="button">Investimento</button>
+          <button class="tab-button admin-only" data-tab="investment" type="button">Investimento</button>
+          <button id="usersTabButton" class="tab-button admin-only hidden" data-tab="users" type="button">Usuarios</button>
         </nav>
       </aside>
 
@@ -39,10 +89,12 @@
             <h1>Controle operacional da hamburgueria</h1>
           </div>
           <div class="topbar-actions">
-            <button id="seedData" class="ghost-button" type="button">Carregar exemplo</button>
-            <button id="exportBackup" class="ghost-button" type="button">Exportar backup</button>
-            <button id="importBackup" class="ghost-button" type="button">Importar backup</button>
-            <button id="clearData" class="danger-button" type="button">Limpar dados</button>
+            <span id="currentUserBadge" class="user-badge"></span>
+            <button id="seedData" class="ghost-button admin-only" type="button">Carregar exemplo</button>
+            <button id="exportBackup" class="ghost-button admin-only" type="button">Exportar backup</button>
+            <button id="importBackup" class="ghost-button admin-only" type="button">Importar backup</button>
+            <button id="clearData" class="danger-button admin-only" type="button">Limpar dados</button>
+            <button id="logoutButton" class="ghost-button" type="button">Sair</button>
           </div>
           <input id="backupFile" class="hidden" type="file" accept="application/json,.json" />
         </header>
@@ -134,7 +186,7 @@
             </section>
           </div>
 
-          <section class="panel exports-panel">
+          <section class="panel exports-panel admin-only">
             <div class="panel-header">
               <h2>Exportar relatorios CSV</h2>
             </div>
@@ -474,6 +526,61 @@
                     </tr>
                   </thead>
                   <tbody id="productCmvTable"></tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section id="users" class="tab-panel admin-only hidden">
+          <div class="grid-two">
+            <form id="userForm" class="panel form-panel">
+              <div class="panel-header">
+                <h2 id="userFormTitle">Novo usuario</h2>
+              </div>
+              <input id="userId" type="hidden" />
+              <label>
+                Nome
+                <input id="userName" type="text" required />
+              </label>
+              <label>
+                Email
+                <input id="userEmail" type="email" required />
+              </label>
+              <label>
+                Perfil
+                <select id="userRole">
+                  <option value="operator">Operador</option>
+                  <option value="admin">Administrador</option>
+                </select>
+              </label>
+              <label>
+                Senha alfanumerica
+                <input id="userPassword" type="password" minlength="8" />
+              </label>
+              <p class="hint">Use pelo menos 8 caracteres, com letras e numeros. Ao editar, deixe em branco para manter a senha atual.</p>
+              <div class="form-actions">
+                <button id="userSubmit" type="submit">Salvar usuario</button>
+                <button id="cancelUserEdit" class="ghost-button hidden" type="button">Cancelar edicao</button>
+              </div>
+              <p id="userMessage" class="hint"></p>
+            </form>
+
+            <section class="panel">
+              <div class="panel-header">
+                <h2>Acessos cadastrados</h2>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Nome</th>
+                      <th>Email</th>
+                      <th>Perfil</th>
+                      <th>Acoes</th>
+                    </tr>
+                  </thead>
+                  <tbody id="usersTable"></tbody>
                 </table>
               </div>
             </section>

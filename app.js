@@ -1,4 +1,6 @@
 const STORAGE_KEY = "burgerstock.v1";
+const AUTH_STORAGE_KEY = "burgerstock.auth.v1";
+const SESSION_STORAGE_KEY = "burgerstock.session.v1";
 
 const defaultState = {
   ingredients: [],
@@ -8,11 +10,18 @@ const defaultState = {
   orders: [],
 };
 
+const defaultAuthState = {
+  users: [],
+};
+
 let reportFilter = {
   mode: "all",
   start: "",
   end: "",
 };
+
+let authState = loadAuthState();
+let currentSession = loadSession();
 
 function createId() {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
@@ -160,6 +169,130 @@ const fileDateFormat = new Intl.DateTimeFormat("pt-BR");
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
+
+function normalizeAuthState(input) {
+  const normalized = { ...clone(defaultAuthState), ...(input || {}) };
+  normalized.users = Array.isArray(normalized.users) ? normalized.users : [];
+  normalized.users = normalized.users
+    .map((user) => ({
+      id: String(user.id || createId()),
+      name: String(user.name || "Usuario"),
+      email: String(user.email || "").trim().toLowerCase(),
+      role: user.role === "admin" ? "admin" : "operator",
+      salt: String(user.salt || ""),
+      passwordHash: String(user.passwordHash || ""),
+      createdAt: user.createdAt || new Date().toISOString(),
+      updatedAt: user.updatedAt || "",
+    }))
+    .filter((user) => user.email && user.salt && user.passwordHash);
+  return normalized;
+}
+
+function loadAuthState() {
+  const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+  if (!raw) return clone(defaultAuthState);
+
+  try {
+    return normalizeAuthState(JSON.parse(raw));
+  } catch {
+    return clone(defaultAuthState);
+  }
+}
+
+function saveAuthState() {
+  authState = normalizeAuthState(authState);
+  localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authState));
+}
+
+function loadSession() {
+  try {
+    const raw = sessionStorage.getItem(SESSION_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveSession(user) {
+  currentSession = { userId: user.id, email: user.email, startedAt: new Date().toISOString() };
+  sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(currentSession));
+}
+
+function clearSession() {
+  currentSession = null;
+  sessionStorage.removeItem(SESSION_STORAGE_KEY);
+}
+
+function getCurrentUser() {
+  if (!currentSession?.userId) return null;
+  return authState.users.find((user) => user.id === currentSession.userId) || null;
+}
+
+function isAdmin() {
+  return getCurrentUser()?.role === "admin";
+}
+
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function validatePassword(value) {
+  const password = String(value || "");
+  if (!/^[A-Za-z0-9]{8,}$/.test(password)) {
+    return "A senha precisa ter pelo menos 8 caracteres e usar apenas letras e numeros.";
+  }
+  if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+    return "A senha precisa misturar letras e numeros.";
+  }
+  return "";
+}
+
+function createSalt() {
+  const bytes = new Uint8Array(16);
+  if (globalThis.crypto?.getRandomValues) {
+    crypto.getRandomValues(bytes);
+    return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+  return `${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`;
+}
+
+function fallbackHash(text) {
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+async function hashPassword(password, salt) {
+  const text = `${salt}:${password}`;
+  if (!globalThis.crypto?.subtle) return fallbackHash(text);
+  const buffer = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(buffer)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function buildPasswordRecord(password) {
+  const salt = createSalt();
+  return {
+    salt,
+    passwordHash: await hashPassword(password, salt),
+  };
+}
+
+function findUser(id) {
+  return authState.users.find((user) => user.id === id);
+}
+
+function findUserByEmail(email) {
+  const normalizedEmail = normalizeEmail(email);
+  return authState.users.find((user) => user.email === normalizedEmail);
+}
+
+function hasUserEmailConflict(email, currentId = "") {
+  const normalizedEmail = normalizeEmail(email);
+  return authState.users.some((user) => user.id !== currentId && user.email === normalizedEmail);
+}
 
 function normalizeState(input) {
   const normalized = { ...clone(defaultState), ...input };
@@ -601,7 +734,19 @@ function calculatePeriodMetrics() {
   };
 }
 
+function activateTab(tabId) {
+  const targetButton = $(`.tab-button[data-tab="${tabId}"]`);
+  const targetPanel = $(`#${tabId}`);
+  if (!targetButton || !targetPanel || targetButton.classList.contains("hidden")) return;
+
+  $$(".tab-button").forEach((item) => item.classList.remove("active"));
+  $$(".tab-panel").forEach((item) => item.classList.remove("active"));
+  targetButton.classList.add("active");
+  targetPanel.classList.add("active");
+}
+
 function renderAll() {
+  renderAuthGate();
   renderSelects();
   renderDashboard();
   renderInventory();
@@ -610,8 +755,59 @@ function renderAll() {
   renderInvestment();
   renderPurchases();
   renderSales();
+  renderUsers();
   renderRecipePreview();
   updateSaleHint();
+}
+
+function renderAuthGate() {
+  const currentUser = getCurrentUser();
+  const hasUsers = authState.users.length > 0;
+  const authenticated = Boolean(currentUser);
+
+  $("#authScreen").classList.toggle("hidden", authenticated);
+  $("#setupForm").classList.toggle("hidden", hasUsers);
+  $("#loginForm").classList.toggle("hidden", !hasUsers || authenticated);
+  document.body.classList.toggle("locked", !authenticated);
+  $(".app-shell").classList.toggle("hidden", !authenticated);
+
+  $$(".admin-only").forEach((item) => item.classList.toggle("hidden", !isAdmin()));
+
+  if (!authenticated) return;
+
+  $("#currentUserBadge").textContent = `${currentUser.name} (${currentUser.role === "admin" ? "admin" : "operador"})`;
+  const activePanel = $(".tab-panel.active");
+  const activeButton = activePanel ? $(`.tab-button[data-tab="${activePanel.id}"]`) : null;
+  if (!activePanel || activeButton?.classList.contains("hidden")) activateTab("dashboard");
+}
+
+function renderUsers() {
+  if (!$("#usersTable") || !isAdmin()) return;
+
+  $("#usersTable").innerHTML =
+    authState.users
+      .map(
+        (user) => `<tr>
+          <td>${escapeHtml(user.name)}</td>
+          <td>${escapeHtml(user.email)}</td>
+          <td>${user.role === "admin" ? "Administrador" : "Operador"}</td>
+          <td>
+            <div class="row-actions">
+              <button class="ghost-button edit-user" type="button" data-id="${user.id}">Editar</button>
+              <button class="danger-button delete-user" type="button" data-id="${user.id}">Excluir</button>
+            </div>
+          </td>
+        </tr>`,
+      )
+      .join("") || `<tr><td colspan="4">Nenhum usuario cadastrado.</td></tr>`;
+
+  $$(".edit-user").forEach((button) => {
+    button.addEventListener("click", () => startUserEdit(button.dataset.id));
+  });
+
+  $$(".delete-user").forEach((button) => {
+    button.addEventListener("click", () => deleteUser(button.dataset.id));
+  });
 }
 
 function renderSelects() {
@@ -1097,6 +1293,57 @@ function startIngredientRestock(id) {
   $("#ingredientRestockQuantity").focus();
 }
 
+function resetUserForm() {
+  $("#userForm").reset();
+  $("#userId").value = "";
+  $("#userRole").value = "operator";
+  $("#userPassword").required = true;
+  $("#userFormTitle").textContent = "Novo usuario";
+  $("#userSubmit").textContent = "Salvar usuario";
+  $("#userMessage").textContent = "";
+  $("#cancelUserEdit").classList.add("hidden");
+}
+
+function startUserEdit(id) {
+  const user = findUser(id);
+  if (!user || !isAdmin()) return;
+
+  activateTab("users");
+  $("#userId").value = user.id;
+  $("#userName").value = user.name;
+  $("#userEmail").value = user.email;
+  $("#userRole").value = user.role;
+  $("#userPassword").value = "";
+  $("#userPassword").required = false;
+  $("#userFormTitle").textContent = "Editar usuario";
+  $("#userSubmit").textContent = "Salvar alteracoes";
+  $("#userMessage").textContent = "";
+  $("#cancelUserEdit").classList.remove("hidden");
+  $("#userName").focus();
+}
+
+function deleteUser(id) {
+  if (!isAdmin()) return;
+  const user = findUser(id);
+  const currentUser = getCurrentUser();
+  if (!user || !currentUser) return;
+
+  const adminCount = authState.users.filter((item) => item.role === "admin").length;
+  if (user.id === currentUser.id) {
+    alert("Voce nao pode excluir o usuario que esta logado.");
+    return;
+  }
+  if (user.role === "admin" && adminCount <= 1) {
+    alert("Mantenha pelo menos um administrador ativo.");
+    return;
+  }
+  if (!confirm(`Deseja excluir o acesso de "${user.email}"?`)) return;
+  authState.users = authState.users.filter((item) => item.id !== id);
+  saveAuthState();
+  if ($("#userId").value === id) resetUserForm();
+  renderAll();
+}
+
 function getMenuInput(productId, className) {
   return document.querySelector(`.${className}[data-id="${productId}"]`);
 }
@@ -1410,11 +1657,64 @@ function getCmvCsvRows() {
 function bindEvents() {
   $$(".tab-button").forEach((button) => {
     button.addEventListener("click", () => {
-      $$(".tab-button").forEach((item) => item.classList.remove("active"));
-      $$(".tab-panel").forEach((item) => item.classList.remove("active"));
-      button.classList.add("active");
-      $(`#${button.dataset.tab}`).classList.add("active");
+      activateTab(button.dataset.tab);
     });
+  });
+
+  $("#setupForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const name = $("#setupName").value.trim();
+    const email = normalizeEmail($("#setupEmail").value);
+    const password = $("#setupPassword").value;
+    const passwordError = validatePassword(password);
+
+    if (!name || !email) return;
+    if (authState.users.length > 0) {
+      $("#setupMessage").textContent = "O administrador inicial ja foi criado.";
+      renderAuthGate();
+      return;
+    }
+    if (passwordError) {
+      $("#setupMessage").textContent = passwordError;
+      return;
+    }
+
+    const passwordRecord = await buildPasswordRecord(password);
+    const user = {
+      id: createId(),
+      name,
+      email,
+      role: "admin",
+      ...passwordRecord,
+      createdAt: new Date().toISOString(),
+    };
+    authState.users.push(user);
+    saveAuthState();
+    saveSession(user);
+    $("#setupForm").reset();
+    renderAll();
+  });
+
+  $("#loginForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const email = normalizeEmail($("#loginEmail").value);
+    const password = $("#loginPassword").value;
+    const user = findUserByEmail(email);
+
+    if (!user || (await hashPassword(password, user.salt)) !== user.passwordHash) {
+      $("#loginMessage").textContent = "Email ou senha incorretos.";
+      return;
+    }
+
+    saveSession(user);
+    $("#loginForm").reset();
+    $("#loginMessage").textContent = "";
+    renderAll();
+  });
+
+  $("#logoutButton").addEventListener("click", () => {
+    clearSession();
+    renderAuthGate();
   });
 
   $("#periodMode").addEventListener("change", () => {
@@ -1604,6 +1904,67 @@ function bindEvents() {
   });
 
   $("#cancelSaleEdit").addEventListener("click", resetSaleForm);
+
+  $("#userForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!isAdmin()) return;
+
+    const userId = $("#userId").value;
+    const name = $("#userName").value.trim();
+    const email = normalizeEmail($("#userEmail").value);
+    const role = $("#userRole").value === "admin" ? "admin" : "operator";
+    const password = $("#userPassword").value;
+    const userBeingEdited = userId ? findUser(userId) : null;
+
+    $("#userMessage").textContent = "";
+
+    if (!name || !email) {
+      $("#userMessage").textContent = "Informe nome e email.";
+      return;
+    }
+    if (hasUserEmailConflict(email, userId)) {
+      $("#userMessage").textContent = "Ja existe usuario com esse email.";
+      return;
+    }
+    if (!userBeingEdited || password) {
+      const passwordError = validatePassword(password);
+      if (passwordError) {
+        $("#userMessage").textContent = passwordError;
+        return;
+      }
+    }
+
+    if (userBeingEdited) {
+      const currentUser = getCurrentUser();
+      const adminCount = authState.users.filter((user) => user.role === "admin").length;
+      if (userBeingEdited.role === "admin" && role !== "admin" && adminCount <= 1) {
+        $("#userMessage").textContent = "Mantenha pelo menos um administrador ativo.";
+        return;
+      }
+
+      userBeingEdited.name = name;
+      userBeingEdited.email = email;
+      userBeingEdited.role = role;
+      userBeingEdited.updatedAt = new Date().toISOString();
+      if (password) Object.assign(userBeingEdited, await buildPasswordRecord(password));
+      if (currentUser?.id === userBeingEdited.id) saveSession(userBeingEdited);
+    } else {
+      authState.users.push({
+        id: createId(),
+        name,
+        email,
+        role,
+        ...(await buildPasswordRecord(password)),
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    saveAuthState();
+    resetUserForm();
+    renderAll();
+  });
+
+  $("#cancelUserEdit").addEventListener("click", resetUserForm);
 
   $("#seedData").addEventListener("click", () => {
     state = normalizeState(exampleState);

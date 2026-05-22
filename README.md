@@ -8,9 +8,14 @@ Abra o arquivo `index.html` no navegador.
 
 Os dados ficam salvos no proprio navegador usando `localStorage`. Para testar rapidamente, clique em **Carregar exemplo** dentro do sistema.
 
+No primeiro acesso, o sistema pede a criacao de um administrador com nome, email e senha alfanumerica. Depois disso, o acesso passa a ser feito por login e senha.
+
 ## Funcionalidades
 
 - Cadastro de ingredientes com unidade, estoque inicial e estoque minimo.
+- Login por email e senha, com primeiro usuario administrador.
+- Cadastro, edicao e exclusao de usuarios pelo administrador.
+- Perfil administrador com acesso total e perfil operador para uso diario de vendas/cardapio.
 - Edicao de materias-primas ja cadastradas, evitando duplicidade de nomes no estoque.
 - Reposicao de materia-prima por botao proprio na tela de ingrediente, informando quantidade comprada e valor pago para atualizar investimento e CMV sem duplicar compras ao editar.
 - Exclusao de materias-primas, removendo o item das fichas tecnicas vinculadas.

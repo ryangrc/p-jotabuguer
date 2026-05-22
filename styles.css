@@ -30,15 +30,62 @@ body {
     sans-serif;
 }
 
+body.locked {
+  overflow: hidden;
+}
+
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
 button {
   border: 0;
   cursor: pointer;
+}
+
+.auth-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background:
+    linear-gradient(135deg, rgba(201, 71, 43, 0.12), transparent 36%),
+    #202721;
+}
+
+.auth-screen.hidden {
+  display: none;
+}
+
+.auth-card {
+  width: min(440px, 100%);
+  padding: 28px;
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.auth-brand {
+  margin-bottom: 24px;
+  color: var(--ink);
+}
+
+.auth-brand small {
+  color: var(--muted);
+}
+
+.auth-form {
+  display: grid;
+  gap: 14px;
+}
+
+.auth-form h1 {
+  font-size: 1.6rem;
 }
 
 .app-shell {
@@ -161,6 +208,15 @@ h2 {
   flex-wrap: wrap;
   gap: 10px;
   justify-content: flex-end;
+}
+
+.user-badge {
+  align-self: center;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 0.85rem;
 }
 
 .tab-panel {
