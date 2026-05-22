@@ -18,6 +18,9 @@ Os dados ficam salvos no proprio navegador usando `localStorage`. Para testar ra
 - Edicao e exclusao de compras antigas com correcao do impacto no estoque.
 - Cadastro de hamburgueres com preco de venda e ficha tecnica de estoque.
 - Edicao completa de hamburgueres, incluindo nome, preco e ficha tecnica.
+- Campos de cardapio digital no produto, com nome publico, categoria, descricao, foto, destaque e status ativo.
+- Aba Cardapio para criar pedidos a partir dos produtos ativos.
+- Confirmacao de pedido do cardapio gerando venda automatica, baixando estoque e salvando CMV/lucro.
 - Exclusao de produtos do cardapio sem apagar vendas antigas do historico.
 - Inclusao de varias materias-primas no mesmo produto, com quantidade usada por unidade vendida.
 - Aba de investimento com custo medio, valor investido por materia-prima, CMV e lucro medio por produto.

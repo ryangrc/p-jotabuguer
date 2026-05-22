@@ -5,6 +5,7 @@ const defaultState = {
   products: [],
   purchases: [],
   sales: [],
+  orders: [],
 };
 
 let reportFilter = {
@@ -52,12 +53,20 @@ const exampleState = {
   products: [],
   purchases: [],
   sales: [],
+  orders: [],
 };
 
 exampleState.products = [
   {
     id: createId(),
     name: "Classico cheddar",
+    menuName: "Classico cheddar",
+    description: "Pao brioche, smash 90g, cheddar e molho da casa.",
+    category: "Smash",
+    imageUrl: "",
+    menuActive: true,
+    featured: true,
+    sortOrder: 1,
     price: 28,
     recipe: [
       { ingredientId: exampleState.ingredients[0].id, quantity: 1 },
@@ -69,6 +78,13 @@ exampleState.products = [
   {
     id: createId(),
     name: "Salada da casa",
+    menuName: "Salada da casa",
+    description: "Pao brioche, carne smash, cheddar, alface e molho da casa.",
+    category: "Classicos",
+    imageUrl: "",
+    menuActive: true,
+    featured: false,
+    sortOrder: 2,
     price: 31,
     recipe: [
       { ingredientId: exampleState.ingredients[0].id, quantity: 1 },
@@ -151,6 +167,7 @@ function normalizeState(input) {
   normalized.products = Array.isArray(normalized.products) ? normalized.products : [];
   normalized.purchases = Array.isArray(normalized.purchases) ? normalized.purchases : [];
   normalized.sales = Array.isArray(normalized.sales) ? normalized.sales : [];
+  normalized.orders = Array.isArray(normalized.orders) ? normalized.orders : [];
 
   normalized.ingredients = normalized.ingredients.map((ingredient) => ({
     id: String(ingredient.id || createId()),
@@ -163,6 +180,13 @@ function normalizeState(input) {
   normalized.products = normalized.products.map((product) => ({
     id: String(product.id || createId()),
     name: String(product.name || "Produto"),
+    menuName: String(product.menuName || product.name || "Produto"),
+    description: String(product.description || ""),
+    category: String(product.category || "Cardapio"),
+    imageUrl: String(product.imageUrl || ""),
+    menuActive: product.menuActive !== false,
+    featured: Boolean(product.featured),
+    sortOrder: toNumber(product.sortOrder),
     price: toNumber(product.price),
     recipe: Array.isArray(product.recipe)
       ? product.recipe
@@ -186,7 +210,29 @@ function normalizeState(input) {
   }));
 
   normalized.sales = normalized.sales.map((sale) => normalizeSale(sale));
+  normalized.orders = normalized.orders.map((order) => normalizeOrder(order));
   return normalized;
+}
+
+function normalizeOrder(order) {
+  const quantity = toNumber(order.quantity) || 1;
+  const price = toNumber(order.price);
+  const total = toNumber(order.total) || quantity * price;
+
+  return {
+    id: String(order.id || createId()),
+    productId: String(order.productId || ""),
+    productName: String(order.productName || "Produto"),
+    customerName: String(order.customerName || ""),
+    note: String(order.note || ""),
+    quantity,
+    price,
+    total,
+    status: order.status === "confirmed" || order.status === "canceled" ? order.status : "pending",
+    date: order.date || new Date().toISOString(),
+    confirmedAt: order.confirmedAt || "",
+    saleId: order.saleId || "",
+  };
 }
 
 function normalizeSale(sale) {
@@ -216,6 +262,8 @@ function normalizeSale(sale) {
     cmvUnit,
     cmvTotal,
     grossProfit: Number.isFinite(Number(sale.grossProfit)) ? Number(sale.grossProfit) : total - (cmvTotal || 0),
+    source: String(sale.source || "manual"),
+    orderId: String(sale.orderId || ""),
     updatedAt: sale.updatedAt || "",
   };
 }
@@ -254,6 +302,10 @@ function findPurchase(id) {
 
 function findSale(id) {
   return state.sales.find((item) => item.id === id);
+}
+
+function findOrder(id) {
+  return state.orders.find((item) => item.id === id);
 }
 
 function ingredientOptions(selectedId = "") {
@@ -443,6 +495,36 @@ function deductProductStock(product, quantity) {
   });
 }
 
+function buildSale(product, quantity, price, extra = {}) {
+  const recipeSnapshot = createRecipeSnapshot(product);
+  const cmvUnit = calculateRecipeCmv(recipeSnapshot);
+  const total = quantity * price;
+  const cmvTotal = cmvUnit * quantity;
+
+  return {
+    id: createId(),
+    productId: product.id,
+    productName: product.name,
+    quantity,
+    price,
+    total,
+    date: new Date().toISOString(),
+    recipeSnapshot,
+    cmvUnit,
+    cmvTotal,
+    grossProfit: total - cmvTotal,
+    ...extra,
+  };
+}
+
+function createSaleFromProduct(product, quantity, price, extra = {}) {
+  if (!canSell(product, quantity)) return null;
+  deductProductStock(product, quantity);
+  const sale = buildSale(product, quantity, price, extra);
+  state.sales.push(sale);
+  return sale;
+}
+
 function canSell(product, quantity) {
   if (!product.recipe.length) return false;
 
@@ -524,6 +606,7 @@ function renderAll() {
   renderDashboard();
   renderInventory();
   renderProducts();
+  renderDigitalMenu();
   renderInvestment();
   renderPurchases();
   renderSales();
@@ -647,6 +730,83 @@ function renderProducts() {
 
   $$(".delete-product").forEach((button) => {
     button.addEventListener("click", () => deleteProduct(button.dataset.id));
+  });
+}
+
+function renderDigitalMenu() {
+  const activeProducts = state.products
+    .filter((product) => product.menuActive)
+    .slice()
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+
+  $("#digitalMenuList").innerHTML =
+    activeProducts
+      .map((product) => {
+        const available = availableForProduct(product);
+        const publicName = product.menuName || product.name;
+        const status = available > 0 ? `<span class="badge">Disponivel: ${available}</span>` : `<span class="badge danger">Sem estoque</span>`;
+        const image = product.imageUrl ? `<img src="${escapeHtml(product.imageUrl)}" alt="${escapeHtml(publicName)}" />` : "";
+        const featured = product.featured ? `<span class="badge warn">Destaque</span>` : "";
+
+        return `<article class="menu-card">
+          ${image}
+          <div class="menu-card-header">
+            <div>
+              <strong>${escapeHtml(publicName)}</strong>
+              <p>${escapeHtml(product.category || "Cardapio")} - ${currency.format(product.price)}</p>
+            </div>
+            <div class="row-actions">${featured}${status}</div>
+          </div>
+          <p>${escapeHtml(product.description || "Sem descricao cadastrada.")}</p>
+          <div class="menu-order-form">
+            <input class="menu-customer" data-id="${product.id}" type="text" placeholder="Cliente" />
+            <input class="menu-quantity" data-id="${product.id}" type="number" min="1" step="1" value="1" />
+            <input class="menu-note" data-id="${product.id}" type="text" placeholder="Observacao do pedido" />
+            <button class="ghost-button create-menu-order" type="button" data-id="${product.id}" ${available <= 0 ? "disabled" : ""}>Criar pedido</button>
+          </div>
+        </article>`;
+      })
+      .join("") || `<div class="empty">Nenhum produto ativo no cardapio.</div>`;
+
+  $("#menuOrderList").innerHTML =
+    state.orders
+      .slice()
+      .sort((a, b) => new Date(b.date) - new Date(a.date))
+      .map((order) => {
+        const statusClass = order.status === "confirmed" ? "" : order.status === "canceled" ? "neutral" : "warn";
+        const statusLabel = order.status === "confirmed" ? "Confirmado" : order.status === "canceled" ? "Cancelado" : "Pendente";
+
+        return `<article class="order-card">
+          <div class="order-card-header">
+            <div>
+              <strong>${escapeHtml(order.productName)} x ${order.quantity}</strong>
+              <p>${escapeHtml(order.customerName || "Cliente nao informado")} - ${dateFormat.format(new Date(order.date))}</p>
+            </div>
+            <span class="badge ${statusClass}">${statusLabel}</span>
+          </div>
+          <p>${escapeHtml(order.note || "Sem observacao")} - ${currency.format(order.total)}</p>
+          <div class="row-actions">
+            ${
+              order.status === "pending"
+                ? `<button class="ghost-button confirm-menu-order" type="button" data-id="${order.id}">Confirmar pedido</button>
+                   <button class="danger-button cancel-menu-order" type="button" data-id="${order.id}">Cancelar</button>`
+                : ""
+            }
+          </div>
+        </article>`;
+      })
+      .join("") || `<div class="empty">Nenhum pedido criado pelo cardapio.</div>`;
+
+  $$(".create-menu-order").forEach((button) => {
+    button.addEventListener("click", () => createMenuOrder(button.dataset.id));
+  });
+
+  $$(".confirm-menu-order").forEach((button) => {
+    button.addEventListener("click", () => confirmMenuOrder(button.dataset.id));
+  });
+
+  $$(".cancel-menu-order").forEach((button) => {
+    button.addEventListener("click", () => cancelMenuOrder(button.dataset.id));
   });
 }
 
@@ -864,6 +1024,9 @@ function startPurchaseEdit(id) {
 function resetProductForm() {
   $("#productForm").reset();
   $("#productId").value = "";
+  $("#productMenuActive").checked = true;
+  $("#productFeatured").checked = false;
+  $("#productSortOrder").value = 0;
   $("#productFormTitle").textContent = "Novo hamburguer";
   $("#productSubmit").textContent = "Salvar hamburguer";
   $("#cancelProductEdit").classList.add("hidden");
@@ -879,6 +1042,13 @@ function startProductEdit(id) {
   $("#productId").value = product.id;
   $("#productName").value = product.name;
   $("#productPrice").value = Number(product.price).toFixed(2);
+  $("#productMenuName").value = product.menuName || product.name;
+  $("#productCategory").value = product.category || "";
+  $("#productDescription").value = product.description || "";
+  $("#productImageUrl").value = product.imageUrl || "";
+  $("#productMenuActive").checked = product.menuActive !== false;
+  $("#productFeatured").checked = Boolean(product.featured);
+  $("#productSortOrder").value = product.sortOrder || 0;
   $("#productFormTitle").textContent = "Editar hamburguer";
   $("#productSubmit").textContent = "Salvar alteracoes";
   $("#cancelProductEdit").classList.remove("hidden");
@@ -925,6 +1095,78 @@ function startIngredientRestock(id) {
 
   startIngredientEdit(id);
   $("#ingredientRestockQuantity").focus();
+}
+
+function getMenuInput(productId, className) {
+  return document.querySelector(`.${className}[data-id="${productId}"]`);
+}
+
+function createMenuOrder(productId) {
+  const product = findProduct(productId);
+  if (!product) return;
+
+  const quantity = Math.max(1, Math.floor(toNumber(getMenuInput(productId, "menu-quantity")?.value) || 1));
+  const customerName = getMenuInput(productId, "menu-customer")?.value.trim() || "";
+  const note = getMenuInput(productId, "menu-note")?.value.trim() || "";
+
+  if (!canSell(product, quantity)) {
+    alert("Estoque insuficiente para criar esse pedido.");
+    return;
+  }
+
+  state.orders.push({
+    id: createId(),
+    productId: product.id,
+    productName: product.menuName || product.name,
+    customerName,
+    note,
+    quantity,
+    price: product.price,
+    total: product.price * quantity,
+    status: "pending",
+    date: new Date().toISOString(),
+    confirmedAt: "",
+    saleId: "",
+  });
+
+  saveState();
+  renderAll();
+}
+
+function confirmMenuOrder(orderId) {
+  const order = findOrder(orderId);
+  if (!order || order.status !== "pending") return;
+
+  const product = findProduct(order.productId);
+  if (!product) {
+    alert("Produto nao encontrado no cardapio atual.");
+    return;
+  }
+
+  const sale = createSaleFromProduct(product, order.quantity, order.price, {
+    source: "cardapio",
+    orderId: order.id,
+  });
+
+  if (!sale) {
+    alert("Estoque insuficiente para confirmar esse pedido.");
+    return;
+  }
+
+  order.status = "confirmed";
+  order.confirmedAt = new Date().toISOString();
+  order.saleId = sale.id;
+  saveState();
+  renderAll();
+}
+
+function cancelMenuOrder(orderId) {
+  const order = findOrder(orderId);
+  if (!order || order.status !== "pending") return;
+  if (!confirm(`Deseja cancelar o pedido de "${order.productName}"?`)) return;
+  order.status = "canceled";
+  saveState();
+  renderAll();
 }
 
 function registerIngredientRestockFromForm() {
@@ -1135,11 +1377,20 @@ function getInventoryCsvRows() {
 
 function getProductsCsvRows() {
   return [
-    ["Produto", "Preco", "Materia-prima", "Quantidade usada", "Unidade"],
+    ["Produto", "Nome cardapio", "Ativo cardapio", "Categoria", "Preco", "Materia-prima", "Quantidade usada", "Unidade"],
     ...state.products.flatMap((product) =>
       product.recipe.map((line) => {
         const ingredient = findIngredient(line.ingredientId);
-        return [product.name, product.price, ingredient?.name || "", line.quantity, ingredient?.unit || ""];
+        return [
+          product.name,
+          product.menuName || product.name,
+          product.menuActive !== false ? "Sim" : "Nao",
+          product.category || "",
+          product.price,
+          ingredient?.name || "",
+          line.quantity,
+          ingredient?.unit || "",
+        ];
       }),
     ),
   ];
@@ -1247,6 +1498,13 @@ function bindEvents() {
     const productId = $("#productId").value;
     const name = $("#productName").value.trim();
     const price = toNumber($("#productPrice").value);
+    const menuName = $("#productMenuName").value.trim() || name;
+    const category = $("#productCategory").value.trim() || "Cardapio";
+    const description = $("#productDescription").value.trim();
+    const imageUrl = $("#productImageUrl").value.trim();
+    const menuActive = $("#productMenuActive").checked;
+    const featured = $("#productFeatured").checked;
+    const sortOrder = toNumber($("#productSortOrder").value);
     const recipe = getRecipeLinesFromForm();
 
     if (!name || price <= 0) {
@@ -1267,9 +1525,28 @@ function bindEvents() {
       if (!product) return;
       product.name = name;
       product.price = price;
+      product.menuName = menuName;
+      product.category = category;
+      product.description = description;
+      product.imageUrl = imageUrl;
+      product.menuActive = menuActive;
+      product.featured = featured;
+      product.sortOrder = sortOrder;
       product.recipe = recipe;
     } else {
-      state.products.push({ id: createId(), name, price, recipe });
+      state.products.push({
+        id: createId(),
+        name,
+        menuName,
+        category,
+        description,
+        imageUrl,
+        menuActive,
+        featured,
+        sortOrder,
+        price,
+        recipe,
+      });
     }
 
     resetProductForm();
@@ -1304,39 +1581,21 @@ function bindEvents() {
       return;
     }
 
-    const recipeSnapshot = createRecipeSnapshot(product);
-    const cmvUnit = calculateRecipeCmv(recipeSnapshot);
-    const total = quantity * price;
-    const cmvTotal = cmvUnit * quantity;
-    const grossProfit = total - cmvTotal;
-
-    deductProductStock(product, quantity);
-
     if (saleBeingEdited) {
+      const saleDraft = buildSale(product, quantity, price, { id: saleBeingEdited.id, date: saleBeingEdited.date });
+      deductProductStock(product, quantity);
       saleBeingEdited.productId = product.id;
       saleBeingEdited.productName = product.name;
       saleBeingEdited.quantity = quantity;
       saleBeingEdited.price = price;
-      saleBeingEdited.total = total;
-      saleBeingEdited.recipeSnapshot = recipeSnapshot;
-      saleBeingEdited.cmvUnit = cmvUnit;
-      saleBeingEdited.cmvTotal = cmvTotal;
-      saleBeingEdited.grossProfit = grossProfit;
+      saleBeingEdited.total = saleDraft.total;
+      saleBeingEdited.recipeSnapshot = saleDraft.recipeSnapshot;
+      saleBeingEdited.cmvUnit = saleDraft.cmvUnit;
+      saleBeingEdited.cmvTotal = saleDraft.cmvTotal;
+      saleBeingEdited.grossProfit = saleDraft.grossProfit;
       saleBeingEdited.updatedAt = new Date().toISOString();
     } else {
-      state.sales.push({
-        id: createId(),
-        productId: product.id,
-        productName: product.name,
-        quantity,
-        price,
-        total,
-        date: new Date().toISOString(),
-        recipeSnapshot,
-        cmvUnit,
-        cmvTotal,
-        grossProfit,
-      });
+      createSaleFromProduct(product, quantity, price);
     }
 
     resetSaleForm();
