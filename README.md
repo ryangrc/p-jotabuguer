@@ -24,8 +24,9 @@ No primeiro acesso, o sistema pede a criacao de um administrador com nome, email
 - Cadastro de hamburgueres com preco de venda e ficha tecnica de estoque.
 - Edicao completa de hamburgueres, incluindo nome, preco e ficha tecnica.
 - Campos de cardapio digital no produto, com nome publico, categoria, descricao, foto, destaque e status ativo.
-- Aba Cardapio para criar pedidos a partir dos produtos ativos.
-- Confirmacao de pedido do cardapio gerando venda automatica, baixando estoque e salvando CMV/lucro.
+- Aba Cardapio para criar pedidos a partir dos produtos ativos, com destino de entrega, mesa ou retirada.
+- Esteira visual de pedidos do cardapio em colunas: aguardando aceite, em producao, pronto, saindo para entrega/mesa e pagamento confirmado.
+- Aceite de pedido do cardapio gerando venda automatica, baixando estoque e salvando CMV/lucro.
 - Exclusao de produtos do cardapio sem apagar vendas antigas do historico.
 - Inclusao de varias materias-primas no mesmo produto, com quantidade usada por unidade vendida.
 - Aba de investimento com custo medio, valor investido por materia-prima, CMV e lucro medio por produto.

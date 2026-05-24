@@ -447,19 +447,37 @@
         </section>
 
         <section id="menu" class="tab-panel">
-          <div class="grid-two">
-            <section class="panel">
+          <div class="menu-page">
+            <section class="panel menu-products-panel">
               <div class="panel-header">
                 <h2>Cardapio digital</h2>
               </div>
               <div id="digitalMenuList" class="digital-menu-list"></div>
             </section>
 
-            <section class="panel">
+            <section class="panel menu-board-panel">
               <div class="panel-header">
-                <h2>Pedidos do cardapio</h2>
+                <h2>Meus pedidos</h2>
               </div>
-              <div id="menuOrderList" class="menu-order-list"></div>
+              <div class="menu-board-tools">
+                <label>
+                  Buscar pedido
+                  <input id="menuOrderSearch" type="search" placeholder="Cliente, produto ou numero" />
+                </label>
+                <label>
+                  Etapa
+                  <select id="menuOrderStatusFilter">
+                    <option value="all">Todas</option>
+                    <option value="awaiting_acceptance">Aguardando aceite</option>
+                    <option value="in_production">Em producao</option>
+                    <option value="ready">Pronto</option>
+                    <option value="dispatching">Saindo/mesa</option>
+                    <option value="payment_confirmed">Pagamento confirmado</option>
+                    <option value="canceled">Cancelado</option>
+                  </select>
+                </label>
+              </div>
+              <div id="menuOrderList" class="menu-order-board"></div>
             </section>
           </div>
         </section>

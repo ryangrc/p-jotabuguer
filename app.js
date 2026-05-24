@@ -20,6 +20,11 @@ let reportFilter = {
   end: "",
 };
 
+let menuFilter = {
+  query: "",
+  status: "all",
+};
+
 let authState = loadAuthState();
 let currentSession = loadSession();
 
@@ -169,6 +174,22 @@ const fileDateFormat = new Intl.DateTimeFormat("pt-BR");
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
+
+const orderStatuses = {
+  awaiting_acceptance: { label: "Aguardando aceite", className: "warn", next: "in_production" },
+  in_production: { label: "Em producao", className: "warn", next: "ready" },
+  ready: { label: "Pronto", className: "", next: "dispatching" },
+  dispatching: { label: "Saindo para entrega/mesa", className: "", next: "payment_confirmed" },
+  payment_confirmed: { label: "Pagamento confirmado", className: "", next: "" },
+  canceled: { label: "Cancelado", className: "neutral", next: "" },
+};
+
+const legacyOrderStatusMap = {
+  pending: "awaiting_acceptance",
+  confirmed: "payment_confirmed",
+};
+
+const orderBoardStatuses = ["awaiting_acceptance", "in_production", "ready", "dispatching", "payment_confirmed", "canceled"];
 
 function normalizeAuthState(input) {
   const normalized = { ...clone(defaultAuthState), ...(input || {}) };
@@ -351,6 +372,8 @@ function normalizeOrder(order) {
   const quantity = toNumber(order.quantity) || 1;
   const price = toNumber(order.price);
   const total = toNumber(order.total) || quantity * price;
+  const rawStatus = String(order.status || "awaiting_acceptance");
+  const status = orderStatuses[rawStatus] ? rawStatus : legacyOrderStatusMap[rawStatus] || "awaiting_acceptance";
 
   return {
     id: String(order.id || createId()),
@@ -358,11 +381,17 @@ function normalizeOrder(order) {
     productName: String(order.productName || "Produto"),
     customerName: String(order.customerName || ""),
     note: String(order.note || ""),
+    destination: order.destination === "table" || order.destination === "pickup" ? order.destination : "delivery",
     quantity,
     price,
     total,
-    status: order.status === "confirmed" || order.status === "canceled" ? order.status : "pending",
+    status,
     date: order.date || new Date().toISOString(),
+    acceptedAt: order.acceptedAt || order.confirmedAt || "",
+    readyAt: order.readyAt || "",
+    dispatchedAt: order.dispatchedAt || "",
+    paidAt: order.paidAt || "",
+    statusUpdatedAt: order.statusUpdatedAt || order.confirmedAt || order.date || new Date().toISOString(),
     confirmedAt: order.confirmedAt || "",
     saleId: order.saleId || "",
   };
@@ -439,6 +468,30 @@ function findSale(id) {
 
 function findOrder(id) {
   return state.orders.find((item) => item.id === id);
+}
+
+function getOrderStatus(status) {
+  return orderStatuses[status] || orderStatuses.awaiting_acceptance;
+}
+
+function getOrderStatusLabel(order, status = order.status) {
+  if (status !== "dispatching") return getOrderStatus(status).label;
+  if (order.destination === "table") return "Indo para mesa";
+  if (order.destination === "pickup") return "Aguardando retirada";
+  return "Saiu para entrega";
+}
+
+function getOrderNumber(order) {
+  return String(order.id || "").replace(/[^A-Za-z0-9]/g, "").slice(-6).toUpperCase() || "PEDIDO";
+}
+
+function getOrderDestinationLabel(destination) {
+  const labels = {
+    delivery: "Entrega",
+    table: "Mesa",
+    pickup: "Retirada",
+  };
+  return labels[destination] || labels.delivery;
 }
 
 function ingredientOptions(selectedId = "") {
@@ -957,6 +1010,11 @@ function renderDigitalMenu() {
           <div class="menu-order-form">
             <input class="menu-customer" data-id="${product.id}" type="text" placeholder="Cliente" />
             <input class="menu-quantity" data-id="${product.id}" type="number" min="1" step="1" value="1" />
+            <select class="menu-destination" data-id="${product.id}">
+              <option value="delivery">Entrega</option>
+              <option value="table">Mesa</option>
+              <option value="pickup">Retirada</option>
+            </select>
             <input class="menu-note" data-id="${product.id}" type="text" placeholder="Observacao do pedido" />
             <button class="ghost-button create-menu-order" type="button" data-id="${product.id}" ${available <= 0 ? "disabled" : ""}>Criar pedido</button>
           </div>
@@ -964,41 +1022,81 @@ function renderDigitalMenu() {
       })
       .join("") || `<div class="empty">Nenhum produto ativo no cardapio.</div>`;
 
-  $("#menuOrderList").innerHTML =
-    state.orders
-      .slice()
-      .sort((a, b) => new Date(b.date) - new Date(a.date))
-      .map((order) => {
-        const statusClass = order.status === "confirmed" ? "" : order.status === "canceled" ? "neutral" : "warn";
-        const statusLabel = order.status === "confirmed" ? "Confirmado" : order.status === "canceled" ? "Cancelado" : "Pendente";
+  const query = menuFilter.query.trim().toLowerCase();
+  const filteredOrders = state.orders
+    .filter((order) => {
+      if (menuFilter.status !== "all" && order.status !== menuFilter.status) return false;
+      if (!query) return true;
+      return [getOrderNumber(order), order.productName, order.customerName, order.note, getOrderDestinationLabel(order.destination)]
+        .join(" ")
+        .toLowerCase()
+        .includes(query);
+    })
+    .slice()
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  $("#menuOrderList").innerHTML = orderBoardStatuses
+    .filter((statusKey) => menuFilter.status === "all" || menuFilter.status === statusKey)
+    .map((statusKey) => {
+      const statusOrders = filteredOrders.filter((order) => order.status === statusKey);
+      const sampleOrder = statusOrders[0] || { status: statusKey, destination: "delivery" };
+      const status = getOrderStatus(statusKey);
+      const columnTitle = statusKey === "dispatching" ? "Saindo/mesa" : getOrderStatusLabel(sampleOrder, statusKey);
+      const cards =
+        statusOrders
+          .map((order) => {
+        const status = getOrderStatus(order.status);
+        const nextStatus = status.next ? getOrderStatus(status.next) : null;
+        const canAccept = order.status === "awaiting_acceptance";
+        const canAdvance = Boolean(nextStatus) && !canAccept;
 
         return `<article class="order-card">
           <div class="order-card-header">
             <div>
-              <strong>${escapeHtml(order.productName)} x ${order.quantity}</strong>
-              <p>${escapeHtml(order.customerName || "Cliente nao informado")} - ${dateFormat.format(new Date(order.date))}</p>
+              <strong>#${getOrderNumber(order)} - ${escapeHtml(order.productName)} x ${order.quantity}</strong>
+              <p>${escapeHtml(order.customerName || "Cliente nao informado")}</p>
             </div>
-            <span class="badge ${statusClass}">${statusLabel}</span>
+            <span class="badge ${status.className}">${getOrderStatusLabel(order)}</span>
           </div>
+          <p>${getOrderDestinationLabel(order.destination)} - ${dateFormat.format(new Date(order.date))}</p>
           <p>${escapeHtml(order.note || "Sem observacao")} - ${currency.format(order.total)}</p>
           <div class="row-actions">
             ${
-              order.status === "pending"
-                ? `<button class="ghost-button confirm-menu-order" type="button" data-id="${order.id}">Confirmar pedido</button>
+              canAccept
+                ? `<button class="ghost-button accept-menu-order" type="button" data-id="${order.id}">Aceitar pedido</button>
                    <button class="danger-button cancel-menu-order" type="button" data-id="${order.id}">Cancelar</button>`
+                : ""
+            }
+            ${
+              canAdvance
+                ? `<button class="ghost-button advance-menu-order" type="button" data-id="${order.id}">Avancar para ${getOrderStatusLabel(order, status.next)}</button>`
                 : ""
             }
           </div>
         </article>`;
       })
-      .join("") || `<div class="empty">Nenhum pedido criado pelo cardapio.</div>`;
+          .join("") || `<div class="empty">Nenhum pedido nesta etapa.</div>`;
+
+      return `<section class="order-column ${statusKey}">
+        <div class="order-column-header">
+          <strong>${columnTitle}</strong>
+          <span>${statusOrders.length}</span>
+        </div>
+        ${cards}
+      </section>`;
+    })
+    .join("") || `<div class="empty">Nenhum pedido encontrado.</div>`;
 
   $$(".create-menu-order").forEach((button) => {
     button.addEventListener("click", () => createMenuOrder(button.dataset.id));
   });
 
-  $$(".confirm-menu-order").forEach((button) => {
-    button.addEventListener("click", () => confirmMenuOrder(button.dataset.id));
+  $$(".accept-menu-order").forEach((button) => {
+    button.addEventListener("click", () => acceptMenuOrder(button.dataset.id));
+  });
+
+  $$(".advance-menu-order").forEach((button) => {
+    button.addEventListener("click", () => advanceMenuOrder(button.dataset.id));
   });
 
   $$(".cancel-menu-order").forEach((button) => {
@@ -1355,6 +1453,7 @@ function createMenuOrder(productId) {
   const quantity = Math.max(1, Math.floor(toNumber(getMenuInput(productId, "menu-quantity")?.value) || 1));
   const customerName = getMenuInput(productId, "menu-customer")?.value.trim() || "";
   const note = getMenuInput(productId, "menu-note")?.value.trim() || "";
+  const destination = getMenuInput(productId, "menu-destination")?.value || "delivery";
 
   if (!canSell(product, quantity)) {
     alert("Estoque insuficiente para criar esse pedido.");
@@ -1367,11 +1466,17 @@ function createMenuOrder(productId) {
     productName: product.menuName || product.name,
     customerName,
     note,
+    destination,
     quantity,
     price: product.price,
     total: product.price * quantity,
-    status: "pending",
+    status: "awaiting_acceptance",
     date: new Date().toISOString(),
+    acceptedAt: "",
+    readyAt: "",
+    dispatchedAt: "",
+    paidAt: "",
+    statusUpdatedAt: new Date().toISOString(),
     confirmedAt: "",
     saleId: "",
   });
@@ -1380,9 +1485,9 @@ function createMenuOrder(productId) {
   renderAll();
 }
 
-function confirmMenuOrder(orderId) {
+function acceptMenuOrder(orderId) {
   const order = findOrder(orderId);
-  if (!order || order.status !== "pending") return;
+  if (!order || order.status !== "awaiting_acceptance") return;
 
   const product = findProduct(order.productId);
   if (!product) {
@@ -1400,18 +1505,38 @@ function confirmMenuOrder(orderId) {
     return;
   }
 
-  order.status = "confirmed";
-  order.confirmedAt = new Date().toISOString();
+  const now = new Date().toISOString();
+  order.status = "in_production";
+  order.acceptedAt = now;
+  order.confirmedAt = now;
+  order.statusUpdatedAt = now;
   order.saleId = sale.id;
+  saveState();
+  renderAll();
+}
+
+function advanceMenuOrder(orderId) {
+  const order = findOrder(orderId);
+  if (!order) return;
+  const nextStatus = getOrderStatus(order.status).next;
+  if (!nextStatus || order.status === "awaiting_acceptance") return;
+
+  const now = new Date().toISOString();
+  order.status = nextStatus;
+  order.statusUpdatedAt = now;
+  if (nextStatus === "ready") order.readyAt = now;
+  if (nextStatus === "dispatching") order.dispatchedAt = now;
+  if (nextStatus === "payment_confirmed") order.paidAt = now;
   saveState();
   renderAll();
 }
 
 function cancelMenuOrder(orderId) {
   const order = findOrder(orderId);
-  if (!order || order.status !== "pending") return;
+  if (!order || order.status !== "awaiting_acceptance") return;
   if (!confirm(`Deseja cancelar o pedido de "${order.productName}"?`)) return;
   order.status = "canceled";
+  order.statusUpdatedAt = new Date().toISOString();
   saveState();
   renderAll();
 }
@@ -1715,6 +1840,16 @@ function bindEvents() {
   $("#logoutButton").addEventListener("click", () => {
     clearSession();
     renderAuthGate();
+  });
+
+  $("#menuOrderSearch").addEventListener("input", () => {
+    menuFilter.query = $("#menuOrderSearch").value;
+    renderDigitalMenu();
+  });
+
+  $("#menuOrderStatusFilter").addEventListener("change", () => {
+    menuFilter.status = $("#menuOrderStatusFilter").value;
+    renderDigitalMenu();
   });
 
   $("#periodMode").addEventListener("change", () => {
