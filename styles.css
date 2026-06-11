@@ -62,6 +62,23 @@ button {
   display: none;
 }
 
+.backup-warning {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border: 1px solid #f0c36d;
+  border-radius: 8px;
+  background: #fff8dc;
+  color: #6b4b0f;
+}
+
+.backup-warning span {
+  flex: 1;
+}
+
 .auth-card {
   width: min(440px, 100%);
   padding: 28px;
@@ -534,11 +551,51 @@ th:last-child {
   gap: 10px;
 }
 
+.recipe-quick-add {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 120px 120px;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 12px;
+}
+
+.recipe-search-results {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.recipe-search-results button {
+  min-height: 34px;
+  border-radius: 8px;
+  padding: 7px 10px;
+  background: #f1f3ef;
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.recipe-search-results .empty {
+  padding: 0;
+  font-size: 0.88rem;
+}
+
 .recipe-line {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 130px 42px;
+  grid-template-columns: minmax(0, 1fr) 130px 42px 42px;
   align-items: end;
   gap: 10px;
+}
+
+.recipe-unit {
+  min-height: 42px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-alt);
+  color: var(--muted);
+  font-weight: 800;
 }
 
 .icon-button {
@@ -599,11 +656,175 @@ th:last-child {
   padding: 16px 18px;
 }
 
+.quick-order {
+  display: grid;
+  gap: 14px;
+}
+
+.quick-products,
+.quick-order-fields,
+.quick-summary,
+.quick-unavailable {
+  display: grid;
+  gap: 10px;
+}
+
+.quick-product-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 42px 36px 42px;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.quick-product-row small {
+  display: block;
+  color: var(--muted);
+}
+
+.quick-product-row span {
+  text-align: center;
+  font-weight: 900;
+}
+
+.quick-summary p {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0;
+}
+
+.quick-summary .big {
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+  font-size: 1.1rem;
+  font-weight: 900;
+}
+
+.quick-unavailable {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.finance-list {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+}
+
+.finance-list p {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.finance-list p:last-child {
+  border-bottom: 0;
+}
+
+.finance-timeline {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+}
+
+.timeline-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border-left: 5px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.timeline-item.entry {
+  border-left-color: var(--green);
+}
+
+.timeline-item.exit {
+  border-left-color: var(--danger);
+}
+
+.timeline-item.adjust {
+  border-left-color: var(--yellow);
+}
+
+.timeline-item strong,
+.timeline-item small {
+  display: block;
+}
+
+.timeline-item small {
+  color: var(--muted);
+}
+
+.timeline-item > span {
+  white-space: nowrap;
+  font-weight: 900;
+}
+
+.report-insights {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  padding: 18px;
+}
+
+.report-block {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.report-block h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.report-bar-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 1fr) minmax(120px, 2fr) auto;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.9rem;
+}
+
+.report-bar-row div {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-alt);
+}
+
+.report-bar-row i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
 .menu-board-tools {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) 220px;
+  grid-template-columns: minmax(220px, 1fr) 220px 190px;
   gap: 12px;
   padding: 16px 18px 0;
+}
+
+.print-toggle {
+  align-self: end;
+  min-height: 42px;
+  align-items: center;
 }
 
 .menu-order-board {
@@ -699,6 +920,58 @@ th:last-child {
   text-align: center;
 }
 
+.kitchen-board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(220px, 1fr));
+  gap: 12px;
+  padding: 18px;
+}
+
+.kitchen-column {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-height: 460px;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.kitchen-column.awaiting_acceptance {
+  background: #f97a24;
+}
+
+.kitchen-column.in_production {
+  background: #f5ae22;
+}
+
+.kitchen-column.ready {
+  background: #52ae4a;
+}
+
+.kitchen-card {
+  display: grid;
+  gap: 10px;
+  border-radius: 8px;
+  background: #fff;
+  padding: 12px;
+}
+
+.kitchen-card ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  font-weight: 900;
+}
+
+.kitchen-note {
+  margin: 0;
+  padding: 8px;
+  border-radius: 8px;
+  background: #fff8d8;
+  font-weight: 800;
+}
+
 .menu-order-form {
   display: grid;
   grid-template-columns: minmax(120px, 1fr) 90px;
@@ -707,6 +980,15 @@ th:last-child {
 
 .menu-order-form button {
   grid-column: 1 / -1;
+}
+
+.compact-check {
+  min-height: 42px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #fff;
 }
 
 .hint {
@@ -731,13 +1013,15 @@ th:last-child {
   }
 
   .tabs {
-    grid-template-columns: repeat(7, minmax(120px, 1fr));
+    grid-template-columns: repeat(9, minmax(120px, 1fr));
     overflow-x: auto;
   }
 
   .stats-grid,
   .grid-two,
-  .menu-page {
+  .menu-page,
+  .kitchen-board,
+  .report-insights {
     grid-template-columns: 1fr 1fr;
   }
 
@@ -764,7 +1048,19 @@ th:last-child {
   .stats-grid,
   .grid-two,
   .menu-page,
-  .menu-board-tools {
+  .menu-board-tools,
+  .kitchen-board,
+  .report-insights {
+    grid-template-columns: 1fr;
+  }
+
+  .backup-warning,
+  .timeline-item {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .report-bar-row {
     grid-template-columns: 1fr;
   }
 
@@ -773,7 +1069,8 @@ th:last-child {
   }
 
   .menu-config-grid,
-  .menu-order-form {
+  .menu-order-form,
+  .recipe-quick-add {
     grid-template-columns: 1fr;
   }
 

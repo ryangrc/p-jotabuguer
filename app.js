@@ -1,6 +1,8 @@
 const STORAGE_KEY = "burgerstock.v1";
 const AUTH_STORAGE_KEY = "burgerstock.auth.v1";
 const SESSION_STORAGE_KEY = "burgerstock.session.v1";
+const PRINT_SETTINGS_KEY = "burgerstock.print.v1";
+const BACKUP_META_KEY = "burgerstock.backup.v1";
 
 const defaultState = {
   ingredients: [],
@@ -8,6 +10,8 @@ const defaultState = {
   purchases: [],
   sales: [],
   orders: [],
+  movements: [],
+  expenses: [],
 };
 
 const defaultAuthState = {
@@ -23,6 +27,24 @@ let reportFilter = {
 let menuFilter = {
   query: "",
   status: "all",
+};
+
+let printSettings = loadPrintSettings();
+let soundSettings = loadSoundSettings();
+let quickOrderDraft = {
+  items: [],
+  form: {
+    customerName: "",
+    customerPhone: "",
+    customerWhatsapp: true,
+    destination: "delivery",
+    address: "",
+    paymentMethod: "not_informed",
+    deliveryFee: 0,
+    discount: 0,
+    surcharge: 0,
+    note: "",
+  },
 };
 
 let authState = loadAuthState();
@@ -82,6 +104,8 @@ const exampleState = {
   purchases: [],
   sales: [],
   orders: [],
+  movements: [],
+  expenses: [],
 };
 
 exampleState.products = [
@@ -282,6 +306,32 @@ function loadSession() {
   }
 }
 
+function loadPrintSettings() {
+  try {
+    const raw = localStorage.getItem(PRINT_SETTINGS_KEY);
+    return raw ? { autoPrintOrders: true, ...JSON.parse(raw) } : { autoPrintOrders: true };
+  } catch {
+    return { autoPrintOrders: true };
+  }
+}
+
+function savePrintSettings() {
+  localStorage.setItem(PRINT_SETTINGS_KEY, JSON.stringify(printSettings));
+}
+
+function loadSoundSettings() {
+  try {
+    const raw = localStorage.getItem("burgerstock.sound.v1");
+    return raw ? { enabled: true, ...JSON.parse(raw) } : { enabled: true };
+  } catch {
+    return { enabled: true };
+  }
+}
+
+function saveSoundSettings() {
+  localStorage.setItem("burgerstock.sound.v1", JSON.stringify(soundSettings));
+}
+
 function saveSession(user) {
   currentSession = { userId: user.id, email: user.email, startedAt: new Date().toISOString() };
   sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(currentSession));
@@ -370,6 +420,8 @@ function normalizeState(input) {
   normalized.purchases = Array.isArray(normalized.purchases) ? normalized.purchases : [];
   normalized.sales = Array.isArray(normalized.sales) ? normalized.sales : [];
   normalized.orders = Array.isArray(normalized.orders) ? normalized.orders : [];
+  normalized.movements = Array.isArray(normalized.movements) ? normalized.movements : [];
+  normalized.expenses = Array.isArray(normalized.expenses) ? normalized.expenses : [];
 
   normalized.ingredients = normalized.ingredients.map((ingredient) => ({
     id: String(ingredient.id || createId()),
@@ -413,25 +465,64 @@ function normalizeState(input) {
 
   normalized.sales = normalized.sales.map((sale) => normalizeSale(sale));
   normalized.orders = normalized.orders.map((order) => normalizeOrder(order));
+  normalized.movements = normalized.movements.map((movement) => normalizeMovement(movement));
+  normalized.expenses = normalized.expenses.map((expense) => normalizeExpense(expense));
   return normalized;
 }
 
+function normalizeOrderItem(item, fallback = {}) {
+  const quantity = Math.max(1, Math.floor(toNumber(item.quantity || fallback.quantity || 1)));
+  const price = toNumber(item.price ?? item.unitPrice ?? fallback.price);
+  const total = toNumber(item.total) || quantity * price;
+
+  return {
+    productId: String(item.productId || fallback.productId || ""),
+    productName: String(item.productName || fallback.productName || "Produto"),
+    quantity,
+    price,
+    total,
+    note: String(item.note || ""),
+  };
+}
+
 function normalizeOrder(order) {
-  const quantity = toNumber(order.quantity) || 1;
-  const price = toNumber(order.price);
-  const total = toNumber(order.total) || quantity * price;
+  const fallbackItem = {
+    productId: order.productId,
+    productName: order.productName,
+    quantity: order.quantity,
+    price: order.price,
+  };
+  const items = Array.isArray(order.items) && order.items.length
+    ? order.items.map((item) => normalizeOrderItem(item))
+    : [normalizeOrderItem(fallbackItem)];
+  const quantity = items.reduce((sum, item) => sum + item.quantity, 0);
+  const price = items[0]?.price || 0;
+  const subtotal = toNumber(order.subtotal) || items.reduce((sum, item) => sum + item.total, 0);
+  const deliveryFee = toNumber(order.deliveryFee);
+  const discount = toNumber(order.discount);
+  const surcharge = toNumber(order.surcharge);
+  const total = toNumber(order.total) || Math.max(0, subtotal + deliveryFee + surcharge - discount);
   const rawStatus = String(order.status || "awaiting_acceptance");
   const status = orderStatuses[rawStatus] ? rawStatus : legacyOrderStatusMap[rawStatus] || "awaiting_acceptance";
 
   return {
     id: String(order.id || createId()),
-    productId: String(order.productId || ""),
-    productName: String(order.productName || "Produto"),
+    productId: String(order.productId || items[0]?.productId || ""),
+    productName: String(order.productName || (items.length === 1 ? items[0].productName : `${items.length} itens`)),
+    items,
     customerName: String(order.customerName || ""),
+    customerPhone: String(order.customerPhone || ""),
+    customerWhatsapp: Boolean(order.customerWhatsapp),
+    address: String(order.address || ""),
+    paymentMethod: String(order.paymentMethod || "not_informed"),
     note: String(order.note || ""),
     destination: order.destination === "table" || order.destination === "pickup" ? order.destination : "delivery",
     quantity,
     price,
+    subtotal,
+    deliveryFee,
+    discount,
+    surcharge,
     total,
     status,
     date: order.date || new Date().toISOString(),
@@ -442,6 +533,32 @@ function normalizeOrder(order) {
     statusUpdatedAt: order.statusUpdatedAt || order.confirmedAt || order.date || new Date().toISOString(),
     confirmedAt: order.confirmedAt || "",
     saleId: order.saleId || "",
+    saleIds: Array.isArray(order.saleIds) ? order.saleIds : order.saleId ? [order.saleId] : [],
+  };
+}
+
+function normalizeMovement(movement) {
+  return {
+    id: String(movement.id || createId()),
+    date: movement.date || new Date().toISOString(),
+    type: String(movement.type || "ajuste"),
+    ingredientId: String(movement.ingredientId || ""),
+    ingredientName: String(movement.ingredientName || ""),
+    unit: String(movement.unit || ""),
+    quantity: toNumber(movement.quantity),
+    source: String(movement.source || ""),
+    sourceId: String(movement.sourceId || ""),
+  };
+}
+
+function normalizeExpense(expense) {
+  return {
+    id: String(expense.id || createId()),
+    category: String(expense.category || "Outros"),
+    description: String(expense.description || expense.category || "Despesa operacional"),
+    amount: toNumber(expense.amount),
+    date: expense.date || new Date().toISOString(),
+    updatedAt: expense.updatedAt || "",
   };
 }
 
@@ -518,6 +635,10 @@ function findOrder(id) {
   return state.orders.find((item) => item.id === id);
 }
 
+function findExpense(id) {
+  return state.expenses.find((item) => item.id === id);
+}
+
 function getOrderStatus(status) {
   return orderStatuses[status] || orderStatuses.awaiting_acceptance;
 }
@@ -533,6 +654,10 @@ function getOrderNumber(order) {
   return String(order.id || "").replace(/[^A-Za-z0-9]/g, "").slice(-6).toUpperCase() || "PEDIDO";
 }
 
+function getOrderItems(order) {
+  return Array.isArray(order.items) && order.items.length ? order.items : [normalizeOrderItem(order)];
+}
+
 function getOrderDestinationLabel(destination) {
   const labels = {
     delivery: "Entrega",
@@ -540,6 +665,167 @@ function getOrderDestinationLabel(destination) {
     pickup: "Retirada",
   };
   return labels[destination] || labels.delivery;
+}
+
+function getPaymentMethodLabel(method) {
+  const labels = {
+    pix: "Pix",
+    cash: "Dinheiro",
+    card: "Cartao",
+    other: "Outro",
+    not_informed: "Nao informado",
+  };
+  return labels[method] || labels.not_informed;
+}
+
+function calculateOrderTotal({ quantity, price, deliveryFee = 0, discount = 0, surcharge = 0 }) {
+  const subtotal = toNumber(quantity) * toNumber(price);
+  return {
+    subtotal,
+    total: Math.max(0, subtotal + toNumber(deliveryFee) + toNumber(surcharge) - toNumber(discount)),
+  };
+}
+
+function calculateOrderItemsTotals(items, extras = {}) {
+  const subtotal = items.reduce((sum, item) => sum + item.quantity * item.price, 0);
+  return {
+    subtotal,
+    total: Math.max(0, subtotal + toNumber(extras.deliveryFee) + toNumber(extras.surcharge) - toNumber(extras.discount)),
+  };
+}
+
+function canFulfillItems(items) {
+  const required = new Map();
+
+  for (const item of items) {
+    const product = findProduct(item.productId);
+    if (!product || !product.recipe.length) return false;
+    product.recipe.forEach((line) => {
+      required.set(line.ingredientId, (required.get(line.ingredientId) || 0) + line.quantity * item.quantity);
+    });
+  }
+
+  return [...required.entries()].every(([ingredientId, quantity]) => {
+    const ingredient = findIngredient(ingredientId);
+    return ingredient && ingredient.stock >= quantity;
+  });
+}
+
+function recordMovement({ type, ingredient, quantity, source, sourceId }) {
+  state.movements.push({
+    id: createId(),
+    date: new Date().toISOString(),
+    type,
+    ingredientId: ingredient.id,
+    ingredientName: ingredient.name,
+    unit: ingredient.unit,
+    quantity,
+    source,
+    sourceId: sourceId || "",
+  });
+}
+
+function getReceiptHtml(order) {
+  const items = getOrderItems(order);
+  const itemLines = items
+    .map((item) => `<tr><td>${item.quantity}x ${escapeHtml(item.productName)}</td><td>${currency.format(item.total)}</td></tr>`)
+    .join("");
+
+  return `<!doctype html>
+    <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8" />
+        <title>Pedido #${getOrderNumber(order)}</title>
+        <style>
+          @page { size: 80mm auto; margin: 4mm; }
+          * { box-sizing: border-box; }
+          body {
+            width: 72mm;
+            margin: 0;
+            color: #000;
+            font-family: ui-monospace, "Courier New", monospace;
+            font-size: 12px;
+          }
+          h1, h2, p { margin: 0; }
+          h1 { font-size: 18px; text-align: center; text-transform: uppercase; }
+          h2 { font-size: 14px; margin-top: 8px; }
+          .center { text-align: center; }
+          .line { border-top: 1px dashed #000; margin: 8px 0; }
+          .row { display: flex; justify-content: space-between; gap: 8px; }
+          .big { font-size: 16px; font-weight: 800; }
+          table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+          td { padding: 2px 0; vertical-align: top; }
+          td:last-child { text-align: right; white-space: nowrap; }
+          .note { white-space: pre-wrap; }
+        </style>
+      </head>
+      <body>
+        <h1>P'JOTABUGUER</h1>
+        <p class="center">COMANDA DE PEDIDO</p>
+        <div class="line"></div>
+        <div class="row"><span>Pedido</span><strong>#${getOrderNumber(order)}</strong></div>
+        <div class="row"><span>Data</span><strong>${dateFormat.format(new Date(order.date))}</strong></div>
+        <div class="row"><span>Destino</span><strong>${getOrderDestinationLabel(order.destination)}</strong></div>
+        <div class="row"><span>Status</span><strong>${getOrderStatusLabel(order)}</strong></div>
+        <div class="row"><span>Pagamento</span><strong>${getPaymentMethodLabel(order.paymentMethod)}</strong></div>
+        <div class="line"></div>
+        <p>Cliente</p>
+        <p class="big">${escapeHtml(order.customerName || "Nao informado")}</p>
+        ${order.customerPhone ? `<p>Telefone: ${escapeHtml(order.customerPhone)}${order.customerWhatsapp ? " / WhatsApp" : ""}</p>` : ""}
+        ${order.address ? `<p>Endereco: ${escapeHtml(order.address)}</p>` : ""}
+        <div class="line"></div>
+        <table>
+          ${itemLines}
+          ${order.deliveryFee > 0 ? `<tr><td>Taxa de entrega</td><td>${currency.format(order.deliveryFee)}</td></tr>` : ""}
+          ${order.surcharge > 0 ? `<tr><td>Acrescimo</td><td>${currency.format(order.surcharge)}</td></tr>` : ""}
+          ${order.discount > 0 ? `<tr><td>Desconto</td><td>-${currency.format(order.discount)}</td></tr>` : ""}
+        </table>
+        <div class="line"></div>
+        <p>Observacao</p>
+        <p class="note">${escapeHtml(order.note || "Sem observacao")}</p>
+        <div class="line"></div>
+        <div class="row big"><span>Total</span><span>${currency.format(order.total)}</span></div>
+        <div class="line"></div>
+        <p class="center">Impresso automaticamente pelo sistema</p>
+      </body>
+    </html>`;
+}
+
+function printOrderReceipt(order) {
+  const printWindow = window.open("", "_blank", "width=380,height=640");
+  if (!printWindow) {
+    alert("O navegador bloqueou a janela de impressao. Libere pop-ups para imprimir automaticamente.");
+    return;
+  }
+
+  printWindow.document.open();
+  printWindow.document.write(getReceiptHtml(order));
+  printWindow.document.close();
+  printWindow.focus();
+  printWindow.addEventListener("load", () => {
+    printWindow.print();
+    printWindow.close();
+  });
+}
+
+function playNewOrderSound() {
+  if (!soundSettings.enabled) return;
+  try {
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    oscillator.type = "sine";
+    oscillator.frequency.value = 880;
+    gain.gain.setValueAtTime(0.001, audioContext.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.18, audioContext.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.28);
+    oscillator.connect(gain);
+    gain.connect(audioContext.destination);
+    oscillator.start();
+    oscillator.stop(audioContext.currentTime + 0.3);
+  } catch {
+    // O navegador pode bloquear audio ate haver interacao do usuario.
+  }
 }
 
 function ingredientOptions(selectedId = "") {
@@ -626,13 +912,25 @@ function getCmvStatus(percent) {
   return { label: "Ruim", className: "danger" };
 }
 
-function getCriticalItems() {
+function getStockStatus(item) {
+  if (item.min <= 0) return { label: "Normal", className: "", level: "normal" };
+  if (item.stock <= item.min * 0.5) return { label: "Critico", className: "danger", level: "critical" };
+  if (item.stock <= item.min) return { label: "Atencao", className: "warn", level: "attention" };
+  return { label: "Normal", className: "", level: "normal" };
+}
+
+function getInventoryAlerts() {
   return state.ingredients
     .filter((item) => item.stock <= item.min)
     .map((item) => ({
       ...item,
+      status: getStockStatus(item),
       suggested: Math.max(item.min - item.stock, 0),
     }));
+}
+
+function getCriticalItems() {
+  return getInventoryAlerts();
 }
 
 function applyPurchaseToStock(purchase) {
@@ -660,6 +958,7 @@ function createPurchase(ingredient, quantity, cost) {
   };
   state.purchases.push(purchase);
   applyPurchaseToStock(purchase);
+  recordMovement({ type: "compra", ingredient, quantity, source: "Compra", sourceId: purchase.id });
   return purchase;
 }
 
@@ -682,12 +981,27 @@ function updatePurchase(purchase, ingredient, quantity, cost) {
       return false;
     }
     currentIngredient.stock = nextStock;
+    const diff = quantity - purchase.quantity;
+    if (Math.abs(diff) > 0.000001) {
+      recordMovement({
+        type: "ajuste",
+        ingredient: currentIngredient,
+        quantity: Math.abs(diff),
+        source: diff > 0 ? "Edicao de compra (+)" : "Edicao de compra (-)",
+        sourceId: purchase.id,
+      });
+    }
   } else {
+    const oldIngredient = findIngredient(purchase.ingredientId);
     if (!removePurchaseFromStock(purchase)) {
       alert("Nao e possivel editar essa compra porque a remocao deixaria o estoque negativo.");
       return false;
     }
+    if (oldIngredient) {
+      recordMovement({ type: "cancelamento", ingredient: oldIngredient, quantity: purchase.quantity, source: "Edicao de compra", sourceId: purchase.id });
+    }
     applyPurchaseToStock(updated);
+    recordMovement({ type: "compra", ingredient, quantity, source: "Edicao de compra", sourceId: purchase.id });
   }
 
   Object.assign(purchase, updated);
@@ -701,6 +1015,10 @@ function deletePurchase(id) {
   if (!removePurchaseFromStock(purchase)) {
     alert("Nao e possivel excluir essa compra porque o estoque ficaria negativo.");
     return;
+  }
+  const ingredient = findIngredient(purchase.ingredientId);
+  if (ingredient) {
+    recordMovement({ type: "cancelamento", ingredient, quantity: purchase.quantity, source: "Exclusao de compra", sourceId: purchase.id });
   }
   state.purchases = state.purchases.filter((item) => item.id !== id);
   if ($("#purchaseId").value === id) resetPurchaseForm();
@@ -753,8 +1071,20 @@ function buildSale(product, quantity, price, extra = {}) {
 
 function createSaleFromProduct(product, quantity, price, extra = {}) {
   if (!canSell(product, quantity)) return null;
-  deductProductStock(product, quantity);
   const sale = buildSale(product, quantity, price, extra);
+  deductProductStock(product, quantity);
+  product.recipe.forEach((line) => {
+    const ingredient = findIngredient(line.ingredientId);
+    if (ingredient) {
+      recordMovement({
+        type: "venda",
+        ingredient,
+        quantity: line.quantity * quantity,
+        source: extra.orderId ? "Pedido" : "Venda",
+        sourceId: extra.orderId || sale.id,
+      });
+    }
+  });
   state.sales.push(sale);
   return sale;
 }
@@ -816,21 +1146,30 @@ function getFilteredPurchases() {
   return state.purchases.filter((purchase) => isInPeriod(purchase.date));
 }
 
+function getFilteredExpenses() {
+  return state.expenses.filter((expense) => isInPeriod(expense.date));
+}
+
 function calculatePeriodMetrics() {
   const sales = getFilteredSales();
   const purchases = getFilteredPurchases();
+  const expenses = getFilteredExpenses();
   const revenue = sales.reduce((sum, sale) => sum + toNumber(sale.total), 0);
   const purchasesTotal = purchases.reduce((sum, purchase) => sum + toNumber(purchase.cost), 0);
+  const expensesTotal = expenses.reduce((sum, expense) => sum + toNumber(expense.amount), 0);
   const soldCmv = sales.reduce((sum, sale) => sum + getSaleCmv(sale), 0);
   const grossProfit = sales.reduce((sum, sale) => sum + getSaleGrossProfit(sale), 0);
 
   return {
     sales,
     purchases,
+    expenses,
     revenue,
     purchasesTotal,
+    expensesTotal,
     soldCmv,
     grossProfit,
+    realProfit: revenue - soldCmv - expensesTotal,
     salesQuantity: sales.reduce((sum, sale) => sum + toNumber(sale.quantity), 0),
   };
 }
@@ -838,11 +1177,13 @@ function calculatePeriodMetrics() {
 function activateTab(tabId) {
   const targetButton = $(`.tab-button[data-tab="${tabId}"]`);
   const targetPanel = $(`#${tabId}`);
-  if (!targetButton || !targetPanel || targetButton.classList.contains("hidden")) return;
+  if (!targetPanel || targetPanel.classList.contains("hidden") || targetButton?.classList.contains("hidden")) return;
 
   $$(".tab-button").forEach((item) => item.classList.remove("active"));
   $$(".tab-panel").forEach((item) => item.classList.remove("active"));
-  targetButton.classList.add("active");
+  if (targetButton) {
+    targetButton.classList.add("active");
+  }
   targetPanel.classList.add("active");
 }
 
@@ -853,7 +1194,14 @@ function renderAll() {
   renderInventory();
   renderProducts();
   renderDigitalMenu();
+  renderMenuCatalog();
+  renderKitchen();
+  renderCashClosing();
+  renderMovements();
+  renderFinance();
   renderInvestment();
+  renderReports();
+  renderBackupWarning();
   renderPurchases();
   renderSales();
   renderUsers();
@@ -923,6 +1271,8 @@ function renderSelects() {
   $("#saleProduct").innerHTML = productOptions($("#saleProduct").value);
   const selectedProduct = findProduct($("#saleProduct").value) || state.products[0];
   $("#salePrice").value = selectedProduct ? selectedProduct.price.toFixed(2) : "";
+  updateAllRecipeLineUnits();
+  renderRecipeSearchResults();
 }
 
 function renderDashboard() {
@@ -942,10 +1292,11 @@ function renderDashboard() {
           <td>${escapeHtml(item.name)}</td>
           <td>${formatQuantity(item.stock, item.unit)}</td>
           <td>${formatQuantity(item.min, item.unit)}</td>
+          <td><span class="badge ${item.status.className}">${item.status.label}</span></td>
           <td><span class="badge danger">${formatQuantity(item.suggested, item.unit)}</span></td>
         </tr>`,
       )
-      .join("") || `<tr><td colspan="4" class="empty">Nenhum ingrediente abaixo do minimo.</td></tr>`;
+      .join("") || `<tr><td colspan="5" class="empty">Nenhum ingrediente abaixo do minimo.</td></tr>`;
 
   $("#periodSummaryTable").innerHTML = `
     <tr><th>Quantidade vendida</th><td>${metrics.salesQuantity.toLocaleString("pt-BR")}</td></tr>
@@ -954,6 +1305,8 @@ function renderDashboard() {
     <tr><th>Compras realizadas</th><td>${currency.format(metrics.purchasesTotal)}</td></tr>
     <tr><th>CMV vendido</th><td>${currency.format(metrics.soldCmv)}</td></tr>
     <tr><th>Lucro bruto</th><td>${currency.format(metrics.grossProfit)}</td></tr>
+    <tr><th>Despesas operacionais</th><td>${currency.format(metrics.expensesTotal)}</td></tr>
+    <tr><th>Lucro real estimado</th><td>${currency.format(metrics.realProfit)}</td></tr>
     <tr><th>Itens criticos</th><td>${criticalItems.length.toLocaleString("pt-BR")}</td></tr>
   `;
 }
@@ -962,13 +1315,12 @@ function renderInventory() {
   $("#inventoryTable").innerHTML =
     state.ingredients
       .map((item) => {
-        const statusClass = item.stock <= item.min ? "danger" : item.stock <= item.min * 1.5 ? "warn" : "";
-        const statusLabel = item.stock <= item.min ? "Baixo" : item.stock <= item.min * 1.5 ? "Atencao" : "Ok";
+        const status = getStockStatus(item);
         return `<tr>
           <td>${escapeHtml(item.name)}</td>
           <td>${formatQuantity(item.stock, item.unit)}</td>
           <td>${formatQuantity(item.min, item.unit)}</td>
-          <td><span class="badge ${statusClass}">${statusLabel}</span></td>
+          <td><span class="badge ${status.className}">${status.label}</span></td>
           <td>
             <div class="row-actions">
               <button class="ghost-button edit-ingredient" type="button" data-id="${item.id}">Editar</button>
@@ -997,6 +1349,7 @@ function renderProducts() {
   $("#productList").innerHTML =
     state.products
       .map((product) => {
+        const pendingRecipe = !product.recipe.length;
         const recipeItems = product.recipe
           .map((line) => {
             const ingredient = findIngredient(line.ingredientId);
@@ -1011,6 +1364,7 @@ function renderProducts() {
           <div class="product-card-header">
             <strong>${escapeHtml(product.name)} - ${currency.format(product.price)}</strong>
             <div class="row-actions">
+              ${pendingRecipe ? `<span class="badge warn">Ficha pendente</span>` : ""}
               <button class="ghost-button edit-product" type="button" data-id="${product.id}">Editar</button>
               <button class="danger-button delete-product" type="button" data-id="${product.id}">Excluir</button>
             </div>
@@ -1031,51 +1385,106 @@ function renderProducts() {
 }
 
 function renderDigitalMenu() {
+  if ($("#autoPrintOrders")) $("#autoPrintOrders").checked = Boolean(printSettings.autoPrintOrders);
+  if ($("#soundOrders")) $("#soundOrders").checked = Boolean(soundSettings.enabled);
+
   const activeProducts = state.products
     .filter((product) => product.menuActive)
     .slice()
     .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+  const availableProducts = activeProducts.filter((product) => product.recipe.length && availableForProduct(product) > 0);
+  const unavailableProducts = activeProducts.filter((product) => !product.recipe.length || availableForProduct(product) <= 0);
+  const draftTotals = getQuickOrderTotals();
+  const form = quickOrderDraft.form;
 
   $("#digitalMenuList").innerHTML =
-    activeProducts
-      .map((product) => {
+    `<div class="quick-order">
+      <div class="quick-products">
+        <strong>Produtos disponiveis</strong>
+        ${
+          availableProducts
+            .map((product) => {
         const available = availableForProduct(product);
         const publicName = product.menuName || product.name;
-        const status = available > 0 ? `<span class="badge">Disponivel: ${available}</span>` : `<span class="badge danger">Sem estoque</span>`;
-        const image = product.imageUrl ? `<img src="${escapeHtml(product.imageUrl)}" alt="${escapeHtml(publicName)}" />` : "";
-        const featured = product.featured ? `<span class="badge warn">Destaque</span>` : "";
-
-        return `<article class="menu-card">
-          ${image}
-          <div class="menu-card-header">
-            <div>
-              <strong>${escapeHtml(publicName)}</strong>
-              <p>${escapeHtml(product.category || "Cardapio")} - ${currency.format(product.price)}</p>
-            </div>
-            <div class="row-actions">${featured}${status}</div>
+        const selected = getQuickOrderItem(product.id)?.quantity || 0;
+        return `<div class="quick-product-row">
+          <div>
+            <strong>${escapeHtml(publicName)}</strong>
+            <small>${currency.format(product.price)} - disponivel ${available}</small>
           </div>
-          <p>${escapeHtml(product.description || "Sem descricao cadastrada.")}</p>
-          <div class="menu-order-form">
-            <input class="menu-customer" data-id="${product.id}" type="text" placeholder="Cliente" />
-            <input class="menu-quantity" data-id="${product.id}" type="number" min="1" step="1" value="1" />
-            <select class="menu-destination" data-id="${product.id}">
-              <option value="delivery">Entrega</option>
-              <option value="table">Mesa</option>
-              <option value="pickup">Retirada</option>
-            </select>
-            <input class="menu-note" data-id="${product.id}" type="text" placeholder="Observacao do pedido" />
-            <button class="ghost-button create-menu-order" type="button" data-id="${product.id}" ${available <= 0 ? "disabled" : ""}>Criar pedido</button>
-          </div>
-        </article>`;
-      })
-      .join("") || `<div class="empty">Nenhum produto ativo no cardapio.</div>`;
+          <button class="icon-button quick-decrease" type="button" data-id="${product.id}">-</button>
+          <span>${selected}</span>
+          <button class="icon-button quick-increase" type="button" data-id="${product.id}">+</button>
+        </div>`;
+      }).join("") || `<div class="empty">Nenhum produto disponivel. Confira ficha tecnica e estoque.</div>`
+        }
+      </div>
+      <div class="quick-order-fields">
+        <strong>Dados do pedido</strong>
+        <input id="quickCustomer" type="text" placeholder="Cliente" value="${escapeHtml(form.customerName)}" />
+        <input id="quickPhone" type="tel" placeholder="Telefone" value="${escapeHtml(form.customerPhone)}" />
+        <label class="check-row compact-check"><input id="quickWhatsapp" type="checkbox" ${form.customerWhatsapp ? "checked" : ""} /> WhatsApp</label>
+        <select id="quickDestination">
+          <option value="delivery" ${form.destination === "delivery" ? "selected" : ""}>Entrega</option>
+          <option value="table" ${form.destination === "table" ? "selected" : ""}>Mesa</option>
+          <option value="pickup" ${form.destination === "pickup" ? "selected" : ""}>Retirada</option>
+        </select>
+        <input id="quickAddress" type="text" placeholder="Endereco ou mesa" value="${escapeHtml(form.address)}" />
+        <select id="quickPayment">
+          <option value="not_informed" ${form.paymentMethod === "not_informed" ? "selected" : ""}>Pagamento</option>
+          <option value="pix" ${form.paymentMethod === "pix" ? "selected" : ""}>Pix</option>
+          <option value="cash" ${form.paymentMethod === "cash" ? "selected" : ""}>Dinheiro</option>
+          <option value="card" ${form.paymentMethod === "card" ? "selected" : ""}>Cartao</option>
+          <option value="other" ${form.paymentMethod === "other" ? "selected" : ""}>Outro</option>
+        </select>
+        <input id="quickDeliveryFee" type="number" min="0" step="0.01" placeholder="Taxa de entrega" value="${form.deliveryFee || ""}" />
+        <input id="quickDiscount" type="number" min="0" step="0.01" placeholder="Desconto" value="${form.discount || ""}" />
+        <input id="quickSurcharge" type="number" min="0" step="0.01" placeholder="Acrescimo" value="${form.surcharge || ""}" />
+        <textarea id="quickNote" rows="3" placeholder="Observacao geral">${escapeHtml(form.note)}</textarea>
+      </div>
+      <div class="quick-summary">
+        <strong>Resumo</strong>
+        <div id="quickOrderItems">
+          ${
+            quickOrderDraft.items
+              .map((item) => `<p>${item.quantity}x ${escapeHtml(item.productName)} <span>${currency.format(item.total)}</span></p>`)
+              .join("") || `<p>Nenhum produto selecionado.</p>`
+          }
+        </div>
+        <p>Subtotal <span>${currency.format(draftTotals.subtotal)}</span></p>
+        <p>Taxa <span id="quickFeePreview">${currency.format(0)}</span></p>
+        <p>Desconto <span id="quickDiscountPreview">${currency.format(0)}</span></p>
+        <p>Acrescimo <span id="quickSurchargePreview">${currency.format(0)}</span></p>
+        <p class="big">Total <span id="quickTotalPreview">${currency.format(draftTotals.total)}</span></p>
+        <div class="form-actions">
+          <button id="createQuickOrder" type="button">Criar pedido</button>
+          <button id="clearQuickOrder" class="ghost-button" type="button">Limpar</button>
+        </div>
+      </div>
+      ${
+        unavailableProducts.length
+          ? `<details class="quick-unavailable"><summary>Indisponiveis (${unavailableProducts.length})</summary>${unavailableProducts
+              .map((product) => `<p>${escapeHtml(product.menuName || product.name)} - ${product.recipe.length ? "sem estoque" : "sem ficha tecnica"}</p>`)
+              .join("")}</details>`
+          : ""
+      }
+    </div>`;
 
   const query = menuFilter.query.trim().toLowerCase();
   const filteredOrders = state.orders
     .filter((order) => {
       if (menuFilter.status !== "all" && order.status !== menuFilter.status) return false;
       if (!query) return true;
-      return [getOrderNumber(order), order.productName, order.customerName, order.note, getOrderDestinationLabel(order.destination)]
+      return [
+        getOrderNumber(order),
+        order.productName,
+        order.customerName,
+        order.customerPhone,
+        order.address,
+        order.note,
+        getPaymentMethodLabel(order.paymentMethod),
+        getOrderDestinationLabel(order.destination),
+      ]
         .join(" ")
         .toLowerCase()
         .includes(query);
@@ -1097,18 +1506,26 @@ function renderDigitalMenu() {
         const nextStatus = status.next ? getOrderStatus(status.next) : null;
         const canAccept = order.status === "awaiting_acceptance";
         const canAdvance = Boolean(nextStatus) && !canAccept;
+        const itemSummary = getOrderItems(order)
+          .map((item) => `${item.quantity}x ${escapeHtml(item.productName)}`)
+          .join("<br>");
 
         return `<article class="order-card">
           <div class="order-card-header">
             <div>
-              <strong>#${getOrderNumber(order)} - ${escapeHtml(order.productName)} x ${order.quantity}</strong>
+              <strong>#${getOrderNumber(order)}</strong>
               <p>${escapeHtml(order.customerName || "Cliente nao informado")}</p>
             </div>
             <span class="badge ${status.className}">${getOrderStatusLabel(order)}</span>
           </div>
+          <p class="order-items">${itemSummary}</p>
           <p>${getOrderDestinationLabel(order.destination)} - ${dateFormat.format(new Date(order.date))}</p>
-          <p>${escapeHtml(order.note || "Sem observacao")} - ${currency.format(order.total)}</p>
+          ${order.customerPhone ? `<p>${escapeHtml(order.customerPhone)}${order.customerWhatsapp ? " / WhatsApp" : ""}</p>` : ""}
+          ${order.address ? `<p>${escapeHtml(order.address)}</p>` : ""}
+          <p>${getPaymentMethodLabel(order.paymentMethod)} - ${currency.format(order.total)}</p>
+          <p>${escapeHtml(order.note || "Sem observacao")}</p>
           <div class="row-actions">
+            <button class="ghost-button print-menu-order" type="button" data-id="${order.id}">Imprimir</button>
             ${
               canAccept
                 ? `<button class="ghost-button accept-menu-order" type="button" data-id="${order.id}">Aceitar pedido</button>
@@ -1135,8 +1552,39 @@ function renderDigitalMenu() {
     })
     .join("") || `<div class="empty">Nenhum pedido encontrado.</div>`;
 
-  $$(".create-menu-order").forEach((button) => {
-    button.addEventListener("click", () => createMenuOrder(button.dataset.id));
+  $$(".quick-increase").forEach((button) => {
+    button.addEventListener("click", () => changeQuickOrderItem(button.dataset.id, 1));
+  });
+
+  $$(".quick-decrease").forEach((button) => {
+    button.addEventListener("click", () => changeQuickOrderItem(button.dataset.id, -1));
+  });
+
+  [
+    "#quickCustomer",
+    "#quickPhone",
+    "#quickWhatsapp",
+    "#quickDestination",
+    "#quickAddress",
+    "#quickPayment",
+    "#quickDeliveryFee",
+    "#quickDiscount",
+    "#quickSurcharge",
+    "#quickNote",
+  ].forEach((selector) => {
+    const input = $(selector);
+    if (input) input.addEventListener("input", updateQuickOrderPreview);
+    if (input) input.addEventListener("change", updateQuickOrderPreview);
+  });
+
+  if ($("#createQuickOrder")) $("#createQuickOrder").addEventListener("click", createMenuOrder);
+  if ($("#clearQuickOrder")) $("#clearQuickOrder").addEventListener("click", clearQuickOrderDraft);
+
+  $$(".print-menu-order").forEach((button) => {
+    button.addEventListener("click", () => {
+      const order = findOrder(button.dataset.id);
+      if (order) printOrderReceipt(order);
+    });
   });
 
   $$(".accept-menu-order").forEach((button) => {
@@ -1150,6 +1598,387 @@ function renderDigitalMenu() {
   $$(".cancel-menu-order").forEach((button) => {
     button.addEventListener("click", () => cancelMenuOrder(button.dataset.id));
   });
+}
+
+function renderMenuCatalog() {
+  const list = $("#menuCatalogList");
+  if (!list) return;
+  const products = state.products
+    .filter((product) => product.menuActive)
+    .slice()
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+
+  list.innerHTML =
+    products
+      .map((product) => {
+        const available = availableForProduct(product);
+        const publicName = product.menuName || product.name;
+        const status = !product.recipe.length
+          ? `<span class="badge warn">Ficha pendente</span>`
+          : available > 0
+            ? `<span class="badge">Disponivel: ${available}</span>`
+            : `<span class="badge danger">Sem estoque</span>`;
+
+        return `<article class="menu-card">
+          <div class="menu-card-header">
+            <div>
+              <strong>${escapeHtml(publicName)}</strong>
+              <p>${escapeHtml(product.category || "Cardapio")} - ${currency.format(product.price)}</p>
+            </div>
+            <div class="row-actions">${product.featured ? `<span class="badge warn">Destaque</span>` : ""}${status}</div>
+          </div>
+          <p>${escapeHtml(product.description || "Sem descricao cadastrada.")}</p>
+        </article>`;
+      })
+      .join("") || `<div class="empty">Nenhum produto ativo no cardapio.</div>`;
+}
+
+function getFinanceMetrics() {
+  const metrics = calculatePeriodMetrics();
+  const orders = state.orders.filter((order) => order.status !== "canceled" && isInPeriod(order.date));
+  const orderTotal = orders.reduce((sum, order) => sum + order.total, 0);
+  const soldTotal = orderTotal || metrics.revenue;
+  const byPayment = (method) => orders.filter((order) => order.paymentMethod === method).reduce((sum, order) => sum + order.total, 0);
+  const deliveryFees = orders.reduce((sum, order) => sum + order.deliveryFee, 0);
+  const discounts = orders.reduce((sum, order) => sum + order.discount, 0);
+  const surcharges = orders.reduce((sum, order) => sum + order.surcharge, 0);
+  const ticket = orders.length ? soldTotal / orders.length : metrics.sales.length ? metrics.revenue / metrics.sales.length : 0;
+  const expensesTotal = metrics.expenses.reduce((sum, expense) => sum + expense.amount, 0);
+  const expensesByCategory = metrics.expenses.reduce((groups, expense) => {
+    groups[expense.category] = (groups[expense.category] || 0) + expense.amount;
+    return groups;
+  }, {});
+
+  return {
+    ...metrics,
+    orders,
+    soldTotal,
+    pix: byPayment("pix"),
+    cash: byPayment("cash"),
+    card: byPayment("card"),
+    other: byPayment("other") + byPayment("not_informed"),
+    deliveryFees,
+    discounts,
+    surcharges,
+    ticket,
+    expensesTotal,
+    expensesByCategory,
+    realProfit: soldTotal - metrics.soldCmv - expensesTotal,
+  };
+}
+
+function renderFinance() {
+  const cards = $("#financeSummaryCards");
+  if (!cards) return;
+  syncFinancePeriodControls();
+  const data = getFinanceMetrics();
+
+  const summaryCards = [
+    ["Faturamento", currency.format(data.soldTotal), "Periodo filtrado"],
+    ["Lucro bruto", currency.format(data.grossProfit), "Vendas menos CMV"],
+    ["CMV", currency.format(data.soldCmv), "Custo vendido"],
+    ["Ticket medio", currency.format(data.ticket), "Total / pedidos"],
+    ["Qtd. pedidos", data.orders.length.toLocaleString("pt-BR"), "Pedidos no periodo"],
+    ["Qtd. vendas", data.sales.length.toLocaleString("pt-BR"), "Vendas geradas"],
+    ["Despesas", currency.format(data.expensesTotal), "Operacao real"],
+    ["Lucro real", currency.format(data.realProfit), "Faturamento - CMV - despesas"],
+    ["Investido em estoque", currency.format(getStockValue()), "Saldo atual x custo medio"],
+  ];
+  cards.innerHTML = summaryCards
+    .map((card) => `<article class="stat-card"><span>${card[0]}</span><strong>${card[1]}</strong><small>${card[2]}</small></article>`)
+    .join("");
+
+  $("#financeEntries").innerHTML = [
+    ["Pix", currency.format(data.pix)],
+    ["Dinheiro", currency.format(data.cash)],
+    ["Cartao", currency.format(data.card)],
+    ["Outros pagamentos", currency.format(data.other)],
+    ["Quantidade de vendas", data.sales.length.toLocaleString("pt-BR")],
+    ["Quantidade de pedidos", data.orders.length.toLocaleString("pt-BR")],
+  ]
+    .map((row) => `<p><span>${row[0]}</span><strong>${row[1]}</strong></p>`)
+    .join("");
+
+  const outflowRows = [
+    ["Compras de estoque", currency.format(data.purchasesTotal)],
+    ["Embalagens", currency.format(data.expensesByCategory.Embalagens || 0)],
+    ["Energia", currency.format(data.expensesByCategory.Energia || 0)],
+    ["Agua", currency.format(data.expensesByCategory.Agua || 0)],
+    ["Internet", currency.format(data.expensesByCategory.Internet || 0)],
+    ["Motoboy", currency.format(data.expensesByCategory.Motoboy || 0)],
+    ["Aluguel", currency.format(data.expensesByCategory.Aluguel || 0)],
+    ["Taxa de cartao", currency.format(data.expensesByCategory["Taxa de maquininha"] || 0)],
+    ["Marketing", currency.format(data.expensesByCategory.Marketing || 0)],
+    ["Outros", currency.format(data.expensesByCategory.Outros || 0)],
+  ];
+  $("#financeOutflows").innerHTML = outflowRows
+    .map((row) => `<p><span>${row[0]}</span><strong>${row[1]}</strong></p>`)
+    .join("");
+
+  renderExpensesTable(data);
+  renderCashConference(data);
+  renderFinanceMovements(data);
+}
+
+function renderCashConference(data = getFinanceMetrics()) {
+  const container = $("#cashConference");
+  if (!container) return;
+  const checks = [
+    ["Dinheiro", data.cash, toNumber($("#cashCounted")?.value)],
+    ["Pix", data.pix, toNumber($("#pixCounted")?.value)],
+    ["Cartao", data.card, toNumber($("#cardCounted")?.value)],
+  ];
+  const totalExpected = data.cash + data.pix + data.card;
+  const totalCounted = checks.reduce((sum, [, , counted]) => sum + counted, 0);
+  const totalDiff = totalCounted - totalExpected;
+  const note = $("#cashConferenceNote")?.value.trim();
+  container.innerHTML = checks
+    .map(([label, expected, counted]) => {
+      const diff = counted - expected;
+      const className = Math.abs(diff) < 0.01 ? "" : diff > 0 ? "warn" : "danger";
+      const text = Math.abs(diff) < 0.01 ? "Sem divergencia" : diff > 0 ? `Sobra ${currency.format(diff)}` : `Falta ${currency.format(Math.abs(diff))}`;
+      return `<p><span>${label}: esperado ${currency.format(expected)} / informado ${currency.format(counted)}</span><strong class="badge ${className}">${text}</strong></p>`;
+    })
+    .join("") +
+    `<p><span>Valor esperado</span><strong>${currency.format(totalExpected)}</strong></p>
+     <p><span>Valor conferido</span><strong>${currency.format(totalCounted)}</strong></p>
+     <p><span>Diferenca encontrada</span><strong class="badge ${Math.abs(totalDiff) < 0.01 ? "" : totalDiff > 0 ? "warn" : "danger"}">${currency.format(totalDiff)}</strong></p>
+     <p><span>Observacoes</span><strong>${escapeHtml(note || "Sem observacao")}</strong></p>`;
+}
+
+function renderFinanceMovements(data = getFinanceMetrics()) {
+  const table = $("#financeMovementsTable");
+  if (!table) return;
+  const saleRows = data.orders.map((order) => ({
+    date: order.date,
+    type: "Entrada",
+    description: `Venda Pedido #${getOrderNumber(order)}`,
+    origin: getPaymentMethodLabel(order.paymentMethod),
+    value: order.total,
+  }));
+  const purchaseRows = data.purchases.map((purchase) => ({
+    date: purchase.date,
+    type: "Saida",
+    description: `Compra de ${purchase.ingredientName}`,
+    origin: "Estoque",
+    value: -purchase.cost,
+  }));
+  const expenseRows = data.expenses.map((expense) => ({
+    date: expense.date,
+    type: "Saida",
+    description: expense.description,
+    origin: expense.category,
+    value: -expense.amount,
+  }));
+  const movementRows = state.movements.filter((movement) => isInPeriod(movement.date)).map((movement) => ({
+    date: movement.date,
+    type: "Ajuste",
+    description: movement.source || movement.type,
+    origin: movement.ingredientName,
+    value: 0,
+  }));
+
+  table.innerHTML =
+    [...saleRows, ...purchaseRows, ...expenseRows, ...movementRows]
+      .sort((a, b) => new Date(b.date) - new Date(a.date))
+      .map((row) => {
+        const date = new Date(row.date);
+        const className = row.value > 0 ? "entry" : row.value < 0 ? "exit" : "adjust";
+        return `<article class="timeline-item ${className}">
+          <div>
+            <strong>${escapeHtml(row.description)}</strong>
+            <small>${date.toLocaleDateString("pt-BR")} ${date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} - ${escapeHtml(row.origin)}</small>
+          </div>
+          <span>${row.value === 0 ? "Ajuste" : currency.format(row.value)}</span>
+        </article>`;
+      })
+      .join("") || `<div class="empty">Nenhuma movimentacao financeira no periodo.</div>`;
+}
+
+function syncFinancePeriodControls() {
+  if (!$("#financePeriodMode")) return;
+  $("#financePeriodMode").value = reportFilter.mode;
+  $("#financePeriodStart").value = reportFilter.start;
+  $("#financePeriodEnd").value = reportFilter.end;
+}
+
+function resetExpenseForm() {
+  if (!$("#expenseForm")) return;
+  $("#expenseForm").reset();
+  $("#expenseId").value = "";
+  $("#expenseDate").value = new Date().toISOString().slice(0, 10);
+  $("#expenseFormTitle").textContent = "Nova despesa operacional";
+  $("#expenseSubmit").textContent = "Salvar despesa";
+  $("#cancelExpenseEdit").classList.add("hidden");
+}
+
+function startExpenseEdit(id) {
+  const expense = findExpense(id);
+  if (!expense) return;
+  $("#expenseId").value = expense.id;
+  $("#expenseCategory").value = expense.category;
+  $("#expenseDescription").value = expense.description;
+  $("#expenseAmount").value = expense.amount;
+  $("#expenseDate").value = expense.date.slice(0, 10);
+  $("#expenseFormTitle").textContent = "Editar despesa operacional";
+  $("#expenseSubmit").textContent = "Atualizar despesa";
+  $("#cancelExpenseEdit").classList.remove("hidden");
+  activateTab("finance");
+}
+
+function deleteExpense(id) {
+  const expense = findExpense(id);
+  if (!expense) return;
+  if (!confirm(`Deseja excluir a despesa "${expense.description}"?`)) return;
+  state.expenses = state.expenses.filter((item) => item.id !== id);
+  if ($("#expenseId")?.value === id) resetExpenseForm();
+  saveState();
+  renderAll();
+}
+
+function renderExpensesTable(data = getFinanceMetrics()) {
+  const table = $("#expensesTable");
+  if (!table) return;
+  table.innerHTML =
+    data.expenses
+      .slice()
+      .sort((a, b) => new Date(b.date) - new Date(a.date))
+      .map(
+        (expense) => `<tr>
+          <td>${fileDateFormat.format(new Date(expense.date))}</td>
+          <td>${escapeHtml(expense.category)}</td>
+          <td>${escapeHtml(expense.description)}</td>
+          <td>${currency.format(expense.amount)}</td>
+          <td>
+            <div class="row-actions">
+              <button class="ghost-button edit-expense" type="button" data-id="${expense.id}">Editar</button>
+              <button class="danger-button delete-expense" type="button" data-id="${expense.id}">Excluir</button>
+            </div>
+          </td>
+        </tr>`,
+      )
+      .join("") || `<tr><td colspan="5" class="empty">Nenhuma despesa no periodo.</td></tr>`;
+
+  table.querySelectorAll(".edit-expense").forEach((button) => {
+    button.addEventListener("click", () => startExpenseEdit(button.dataset.id));
+  });
+  table.querySelectorAll(".delete-expense").forEach((button) => {
+    button.addEventListener("click", () => deleteExpense(button.dataset.id));
+  });
+}
+
+function renderKitchen() {
+  const board = $("#kitchenBoard");
+  if (!board) return;
+  const kitchenStatuses = ["awaiting_acceptance", "in_production", "ready"];
+
+  board.innerHTML = kitchenStatuses
+    .map((statusKey) => {
+      const orders = state.orders
+        .filter((order) => order.status === statusKey)
+        .sort((a, b) => new Date(a.date) - new Date(b.date));
+      const label = getOrderStatusLabel({ status: statusKey, destination: "delivery" }, statusKey);
+      const cards =
+        orders
+          .map((order) => {
+            const items = getOrderItems(order).map((item) => `<li>${item.quantity}x ${escapeHtml(item.productName)}</li>`).join("");
+            const status = getOrderStatus(order.status);
+            return `<article class="kitchen-card">
+              <div class="order-card-header">
+                <strong>#${getOrderNumber(order)}</strong>
+                <span class="badge ${status.className}">${getOrderStatusLabel(order)}</span>
+              </div>
+              <p>${escapeHtml(order.customerName || "Cliente nao informado")} - ${getOrderDestinationLabel(order.destination)}</p>
+              <ul>${items}</ul>
+              <p class="kitchen-note">${escapeHtml(order.note || "Sem observacao")}</p>
+              <div class="row-actions">
+                ${
+                  order.status === "awaiting_acceptance"
+                    ? `<button class="ghost-button accept-menu-order" type="button" data-id="${order.id}">Aceitar</button>`
+                    : ""
+                }
+                ${
+                  order.status !== "awaiting_acceptance"
+                    ? `<button class="ghost-button advance-menu-order" type="button" data-id="${order.id}">Avancar</button>`
+                    : ""
+                }
+              </div>
+            </article>`;
+          })
+          .join("") || `<div class="empty">Nenhum pedido.</div>`;
+
+      return `<section class="kitchen-column ${statusKey}">
+        <div class="order-column-header"><strong>${label}</strong><span>${orders.length}</span></div>
+        ${cards}
+      </section>`;
+    })
+    .join("");
+
+  board.querySelectorAll(".accept-menu-order").forEach((button) => {
+    button.addEventListener("click", () => acceptMenuOrder(button.dataset.id));
+  });
+  board.querySelectorAll(".advance-menu-order").forEach((button) => {
+    button.addEventListener("click", () => advanceMenuOrder(button.dataset.id));
+  });
+}
+
+function getCashDateValue() {
+  const input = $("#cashDate");
+  if (!input) return new Date().toISOString().slice(0, 10);
+  if (!input.value) input.value = new Date().toISOString().slice(0, 10);
+  return input.value;
+}
+
+function renderCashClosing() {
+  const container = $("#cashSummary");
+  if (!container) return;
+  const date = getCashDateValue();
+  const orders = state.orders.filter((order) => order.status !== "canceled" && order.date.slice(0, 10) === date);
+  const sales = state.sales.filter((sale) => sale.date.slice(0, 10) === date);
+  const total = orders.reduce((sum, order) => sum + order.total, 0);
+  const byPayment = (method) => orders.filter((order) => order.paymentMethod === method).reduce((sum, order) => sum + order.total, 0);
+  const deliveryFees = orders.reduce((sum, order) => sum + order.deliveryFee, 0);
+  const discounts = orders.reduce((sum, order) => sum + order.discount, 0);
+  const surcharges = orders.reduce((sum, order) => sum + order.surcharge, 0);
+  const grossProfit = sales.reduce((sum, sale) => sum + getSaleGrossProfit(sale), 0);
+  const ticket = orders.length ? total / orders.length : 0;
+
+  const cards = [
+    ["Total vendido", currency.format(total), "Pedidos do dia"],
+    ["Pix", currency.format(byPayment("pix")), "Pagamentos"],
+    ["Dinheiro", currency.format(byPayment("cash")), "Pagamentos"],
+    ["Cartao", currency.format(byPayment("card")), "Pagamentos"],
+    ["Outros", currency.format(byPayment("other") + byPayment("not_informed")), "Outros/nao informado"],
+    ["Taxas de entrega", currency.format(deliveryFees), "Somadas aos pedidos"],
+    ["Descontos", currency.format(discounts), "Concedidos"],
+    ["Acrescimos", currency.format(surcharges), "Extras"],
+    ["Qtd. pedidos", orders.length.toLocaleString("pt-BR"), "Pedidos no dia"],
+    ["Ticket medio", currency.format(ticket), "Total / pedidos"],
+    ["Lucro bruto estimado", currency.format(grossProfit), "Com base nas vendas aceitas"],
+  ];
+
+  container.innerHTML = cards
+    .map((card) => `<article class="stat-card"><span>${card[0]}</span><strong>${card[1]}</strong><small>${card[2]}</small></article>`)
+    .join("");
+}
+
+function renderMovements() {
+  const table = $("#movementsTable");
+  if (!table) return;
+  table.innerHTML =
+    state.movements
+      .slice()
+      .sort((a, b) => new Date(b.date) - new Date(a.date))
+      .map(
+        (movement) => `<tr>
+          <td>${dateFormat.format(new Date(movement.date))}</td>
+          <td>${escapeHtml(movement.type)}</td>
+          <td>${escapeHtml(movement.ingredientName)}</td>
+          <td>${formatQuantity(movement.quantity, movement.unit)}</td>
+          <td>${escapeHtml(movement.source)} ${movement.sourceId ? `#${escapeHtml(String(movement.sourceId).slice(-6))}` : ""}</td>
+        </tr>`,
+      )
+      .join("") || `<tr><td colspan="5" class="empty">Nenhuma movimentacao registrada ainda.</td></tr>`;
 }
 
 function renderInvestment() {
@@ -1209,6 +2038,71 @@ function renderInvestment() {
     `<tr><td colspan="6" class="empty">Cadastre produtos com ficha tecnica para calcular o CMV.</td></tr>`;
 }
 
+function sumBy(items, keyGetter, valueGetter) {
+  return items.reduce((groups, item) => {
+    const key = keyGetter(item) || "Nao informado";
+    groups[key] = (groups[key] || 0) + valueGetter(item);
+    return groups;
+  }, {});
+}
+
+function renderBarList(title, rows, formatter = (value) => value.toLocaleString("pt-BR")) {
+  const max = Math.max(...rows.map((row) => row.value), 1);
+  return `<section class="report-block">
+    <h3>${title}</h3>
+    ${
+      rows.length
+        ? rows
+            .map(
+              (row) => `<div class="report-bar-row">
+                <span>${escapeHtml(row.label)}</span>
+                <div><i style="width:${Math.max(4, (row.value / max) * 100)}%"></i></div>
+                <strong>${formatter(row.value)}</strong>
+              </div>`,
+            )
+            .join("")
+        : `<div class="empty">Sem dados no periodo.</div>`
+    }
+  </section>`;
+}
+
+function renderReports() {
+  const container = $("#reportInsights");
+  if (!container) return;
+  const metrics = calculatePeriodMetrics();
+  const salesByProduct = Object.entries(sumBy(metrics.sales, (sale) => sale.productName, (sale) => sale.quantity))
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value);
+  const leastSold = salesByProduct.slice().sort((a, b) => a.value - b.value);
+  const profitByProduct = Object.entries(sumBy(metrics.sales, (sale) => sale.productName, (sale) => getSaleGrossProfit(sale)))
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value);
+  const consumed = {};
+  metrics.sales.forEach((sale) => {
+    getSaleRecipe(sale).forEach((line) => {
+      const ingredient = findIngredient(line.ingredientId);
+      if (!ingredient) return;
+      const key = `${ingredient.name} (${ingredient.unit})`;
+      consumed[key] = (consumed[key] || 0) + line.quantity * sale.quantity;
+    });
+  });
+  const consumedRows = Object.entries(consumed)
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value);
+  const revenueByDay = Object.entries(sumBy(metrics.sales, (sale) => sale.date.slice(0, 10), (sale) => sale.total))
+    .map(([label, value]) => ({ label: fileDateFormat.format(new Date(`${label}T12:00:00`)), value }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+
+  container.innerHTML = [
+    renderBarList("Produtos mais vendidos", salesByProduct.slice(0, 6)),
+    renderBarList("Produtos menos vendidos", leastSold.slice(0, 6)),
+    renderBarList("Ingredientes mais consumidos", consumedRows.slice(0, 6), (value) => value.toLocaleString("pt-BR", { maximumFractionDigits: 2 })),
+    renderBarList("Lucro por produto", profitByProduct.slice(0, 6), (value) => currency.format(value)),
+    renderBarList("Faturamento por periodo", revenueByDay.slice(-10), (value) => currency.format(value)),
+    renderBarList("Evolucao de vendas", revenueByDay.slice(-10), (value) => currency.format(value)),
+  ].join("");
+}
+
 function renderPurchases() {
   $("#purchasesTable").innerHTML =
     state.purchases
@@ -1264,6 +2158,76 @@ function renderSales() {
   });
 }
 
+function getRecipeIngredientIds() {
+  return $$(".recipe-line")
+    .map((line) => line.querySelector(".recipe-ingredient").value)
+    .filter(Boolean);
+}
+
+function updateRecipeLineUnit(line) {
+  const ingredient = findIngredient(line.querySelector(".recipe-ingredient").value);
+  const unit = line.querySelector(".recipe-unit");
+  if (unit) unit.textContent = ingredient?.unit || "un";
+}
+
+function updateAllRecipeLineUnits() {
+  $$(".recipe-line").forEach(updateRecipeLineUnit);
+}
+
+function renderRecipeSearchResults() {
+  const results = $("#recipeSearchResults");
+  if (!results) return;
+
+  const query = $("#recipeIngredientSearch").value.trim().toLowerCase();
+  const selectedIds = new Set(getRecipeIngredientIds());
+  const matches = state.ingredients
+    .filter((ingredient) => !selectedIds.has(ingredient.id))
+    .filter((ingredient) => !query || ingredient.name.toLowerCase().includes(query))
+    .slice(0, 8);
+
+  results.innerHTML =
+    matches
+      .map(
+        (ingredient) =>
+          `<button class="recipe-search-option" type="button" data-id="${ingredient.id}">${escapeHtml(ingredient.name)} (${escapeHtml(ingredient.unit)})</button>`,
+      )
+      .join("") ||
+    `<span class="empty">${state.ingredients.length ? "Nenhuma materia-prima encontrada." : "Cadastre materias-primas no estoque primeiro."}</span>`;
+
+  $$(".recipe-search-option").forEach((button) => {
+    button.addEventListener("click", () => {
+      addRecipeLineFromQuickAdd(button.dataset.id);
+    });
+  });
+}
+
+function addRecipeLineFromQuickAdd(ingredientId = "") {
+  const selectedId = ingredientId || $("#recipeSearchResults .recipe-search-option")?.dataset.id || "";
+  const quantity = toNumber($("#recipeQuickQuantity").value);
+
+  if (!selectedId) {
+    alert("Selecione uma materia-prima para adicionar.");
+    return;
+  }
+  if (quantity <= 0) {
+    alert("Informe a quantidade usada por unidade vendida.");
+    $("#recipeQuickQuantity").focus();
+    return;
+  }
+  if (getRecipeIngredientIds().includes(selectedId)) {
+    alert("Essa materia-prima ja esta na ficha tecnica.");
+    return;
+  }
+
+  addRecipeLine(selectedId, quantity);
+  $("#recipeIngredientSearch").value = "";
+  $("#recipeQuickQuantity").value = "";
+  renderRecipeSearchResults();
+  const quantityInputs = $$(".recipe-line .recipe-quantity");
+  const lastQuantityInput = quantityInputs[quantityInputs.length - 1];
+  if (lastQuantityInput) lastQuantityInput.focus();
+}
+
 function addRecipeLine(selectedId = "", quantity = "") {
   const template = $("#recipeLineTemplate").content.cloneNode(true);
   const line = template.querySelector(".recipe-line");
@@ -1272,13 +2236,20 @@ function addRecipeLine(selectedId = "", quantity = "") {
 
   select.innerHTML = ingredientOptions(selectedId);
   input.value = quantity;
-  select.addEventListener("change", renderRecipePreview);
+  updateRecipeLineUnit(line);
+  select.addEventListener("change", () => {
+    updateRecipeLineUnit(line);
+    renderRecipeSearchResults();
+    renderRecipePreview();
+  });
   input.addEventListener("input", renderRecipePreview);
   line.querySelector(".remove-line").addEventListener("click", () => {
     line.remove();
+    renderRecipeSearchResults();
     renderRecipePreview();
   });
   $("#recipeLines").append(line);
+  renderRecipeSearchResults();
   renderRecipePreview();
 }
 
@@ -1295,6 +2266,7 @@ function renderRecipePreview() {
   const preview = $("#recipePreview");
   if (!preview) return;
 
+  updateAllRecipeLineUnits();
   const recipe = getRecipeLinesFromForm();
   preview.innerHTML =
     recipe
@@ -1372,8 +2344,11 @@ function resetProductForm() {
   $("#productFormTitle").textContent = "Novo hamburguer";
   $("#productSubmit").textContent = "Salvar hamburguer";
   $("#cancelProductEdit").classList.add("hidden");
+  $("#recipeIngredientSearch").value = "";
+  $("#recipeQuickQuantity").value = "";
   $("#recipeLines").innerHTML = "";
   addRecipeLine();
+  renderRecipeSearchResults();
 }
 
 function startProductEdit(id) {
@@ -1397,6 +2372,7 @@ function startProductEdit(id) {
   $("#recipeLines").innerHTML = "";
   product.recipe.forEach((line) => addRecipeLine(line.ingredientId, line.quantity));
   if (!product.recipe.length) addRecipeLine();
+  renderRecipeSearchResults();
   renderRecipePreview();
   $("#productName").focus();
 }
@@ -1490,34 +2466,192 @@ function deleteUser(id) {
   renderAll();
 }
 
+function getQuickOrderItem(productId) {
+  return quickOrderDraft.items.find((item) => item.productId === productId);
+}
+
+function syncQuickOrderDraft() {
+  quickOrderDraft.items = quickOrderDraft.items
+    .map((item) => {
+      const product = findProduct(item.productId);
+      if (!product) return null;
+      return {
+        productId: product.id,
+        productName: product.menuName || product.name,
+        quantity: item.quantity,
+        price: product.price,
+        total: product.price * item.quantity,
+      };
+    })
+    .filter(Boolean);
+}
+
+function getQuickOrderTotals() {
+  syncQuickOrderDraft();
+  return calculateOrderItemsTotals(quickOrderDraft.items);
+}
+
+function changeQuickOrderItem(productId, delta) {
+  syncQuickOrderFormFromDom();
+  const product = findProduct(productId);
+  if (!product) return;
+  const existing = getQuickOrderItem(productId);
+  const nextQuantity = Math.max(0, (existing?.quantity || 0) + delta);
+  const nextItems = quickOrderDraft.items.filter((item) => item.productId !== productId);
+
+  if (nextQuantity > 0) {
+    nextItems.push({
+      productId: product.id,
+      productName: product.menuName || product.name,
+      quantity: nextQuantity,
+      price: product.price,
+      total: product.price * nextQuantity,
+    });
+  }
+
+  if (!canFulfillItems(nextItems)) {
+    alert("Estoque insuficiente para adicionar mais este produto.");
+    return;
+  }
+
+  quickOrderDraft.items = nextItems;
+  renderDigitalMenu();
+}
+
+function getQuickOrderFormData() {
+  syncQuickOrderFormFromDom();
+  const deliveryFee = toNumber(quickOrderDraft.form.deliveryFee);
+  const discount = toNumber(quickOrderDraft.form.discount);
+  const surcharge = toNumber(quickOrderDraft.form.surcharge);
+  const totals = calculateOrderItemsTotals(quickOrderDraft.items, { deliveryFee, discount, surcharge });
+
+  return {
+    customerName: quickOrderDraft.form.customerName,
+    customerPhone: quickOrderDraft.form.customerPhone,
+    customerWhatsapp: quickOrderDraft.form.customerWhatsapp,
+    destination: quickOrderDraft.form.destination,
+    address: quickOrderDraft.form.address,
+    paymentMethod: quickOrderDraft.form.paymentMethod,
+    deliveryFee,
+    discount,
+    surcharge,
+    note: $("#quickNote")?.value.trim() || "",
+    ...totals,
+  };
+}
+
+function syncQuickOrderFormFromDom() {
+  if (!$("#quickCustomer")) return;
+  quickOrderDraft.form = {
+    customerName: $("#quickCustomer").value.trim(),
+    customerPhone: $("#quickPhone").value.trim(),
+    customerWhatsapp: Boolean($("#quickWhatsapp").checked),
+    destination: $("#quickDestination").value || "delivery",
+    address: $("#quickAddress").value.trim(),
+    paymentMethod: $("#quickPayment").value || "not_informed",
+    deliveryFee: toNumber($("#quickDeliveryFee").value),
+    discount: toNumber($("#quickDiscount").value),
+    surcharge: toNumber($("#quickSurcharge").value),
+    note: $("#quickNote").value.trim(),
+  };
+}
+
+function updateQuickOrderPreview() {
+  const data = getQuickOrderFormData();
+  if ($("#quickFeePreview")) $("#quickFeePreview").textContent = currency.format(data.deliveryFee);
+  if ($("#quickDiscountPreview")) $("#quickDiscountPreview").textContent = currency.format(data.discount);
+  if ($("#quickSurchargePreview")) $("#quickSurchargePreview").textContent = currency.format(data.surcharge);
+  if ($("#quickTotalPreview")) $("#quickTotalPreview").textContent = currency.format(data.total);
+}
+
+function clearQuickOrderDraft() {
+  quickOrderDraft.items = [];
+  quickOrderDraft.form = {
+    customerName: "",
+    customerPhone: "",
+    customerWhatsapp: true,
+    destination: "delivery",
+    address: "",
+    paymentMethod: "not_informed",
+    deliveryFee: 0,
+    discount: 0,
+    surcharge: 0,
+    note: "",
+  };
+  renderDigitalMenu();
+}
+
 function getMenuInput(productId, className) {
   return document.querySelector(`.${className}[data-id="${productId}"]`);
 }
 
-function createMenuOrder(productId) {
-  const product = findProduct(productId);
-  if (!product) return;
-
-  const quantity = Math.max(1, Math.floor(toNumber(getMenuInput(productId, "menu-quantity")?.value) || 1));
-  const customerName = getMenuInput(productId, "menu-customer")?.value.trim() || "";
-  const note = getMenuInput(productId, "menu-note")?.value.trim() || "";
-  const destination = getMenuInput(productId, "menu-destination")?.value || "delivery";
-
-  if (!canSell(product, quantity)) {
+function createMenuOrder() {
+  syncQuickOrderDraft();
+  if (!quickOrderDraft.items.length) {
+    alert("Selecione pelo menos um produto para criar o pedido.");
+    return;
+  }
+  if (!canFulfillItems(quickOrderDraft.items)) {
     alert("Estoque insuficiente para criar esse pedido.");
     return;
   }
 
-  state.orders.push({
+  const formData = getQuickOrderFormData();
+  if (!formData.customerName) {
+    alert("Informe o nome do cliente.");
+    $("#quickCustomer").focus();
+    return;
+  }
+  if (formData.destination === "delivery" && !formData.address) {
+    alert("Informe o endereco para entrega.");
+    $("#quickAddress").focus();
+    return;
+  }
+  if (formData.destination === "table" && !formData.address) {
+    alert("Informe o numero da mesa.");
+    $("#quickAddress").focus();
+    return;
+  }
+
+  const summary = [
+    "Confirmar pedido?",
+    "",
+    `Cliente: ${formData.customerName}`,
+    `Telefone: ${formData.customerPhone || "Nao informado"}${formData.customerWhatsapp ? " / WhatsApp" : ""}`,
+    `Destino: ${getOrderDestinationLabel(formData.destination)}${formData.address ? ` - ${formData.address}` : ""}`,
+    `Pagamento: ${getPaymentMethodLabel(formData.paymentMethod)}`,
+    "",
+    ...quickOrderDraft.items.map((item) => `${item.quantity}x ${item.productName} - ${currency.format(item.total)}`),
+    "",
+    `Taxa: ${currency.format(formData.deliveryFee)}`,
+    `Desconto: ${currency.format(formData.discount)}`,
+    `Acrescimo: ${currency.format(formData.surcharge)}`,
+    `Total: ${currency.format(formData.total)}`,
+    "",
+    `Observacao: ${formData.note || "Sem observacao"}`,
+  ].join("\n");
+
+  if (!confirm(summary)) return;
+
+  const order = {
     id: createId(),
-    productId: product.id,
-    productName: product.menuName || product.name,
-    customerName,
-    note,
-    destination,
-    quantity,
-    price: product.price,
-    total: product.price * quantity,
+    productId: quickOrderDraft.items[0].productId,
+    productName: quickOrderDraft.items.length === 1 ? quickOrderDraft.items[0].productName : `${quickOrderDraft.items.length} itens`,
+    items: clone(quickOrderDraft.items),
+    customerName: formData.customerName,
+    customerPhone: formData.customerPhone,
+    customerWhatsapp: formData.customerWhatsapp,
+    address: formData.address,
+    paymentMethod: formData.paymentMethod,
+    note: formData.note,
+    destination: formData.destination,
+    quantity: quickOrderDraft.items.reduce((sum, item) => sum + item.quantity, 0),
+    price: quickOrderDraft.items[0].price,
+    subtotal: formData.subtotal,
+    deliveryFee: formData.deliveryFee,
+    discount: formData.discount,
+    surcharge: formData.surcharge,
+    total: formData.total,
     status: "awaiting_acceptance",
     date: new Date().toISOString(),
     acceptedAt: "",
@@ -1527,30 +2661,40 @@ function createMenuOrder(productId) {
     statusUpdatedAt: new Date().toISOString(),
     confirmedAt: "",
     saleId: "",
-  });
+  };
+
+  state.orders.push(order);
+  quickOrderDraft.items = [];
+  clearQuickOrderDraft();
 
   saveState();
   renderAll();
+  playNewOrderSound();
+  if (printSettings.autoPrintOrders) printOrderReceipt(order);
 }
 
 function acceptMenuOrder(orderId) {
   const order = findOrder(orderId);
   if (!order || order.status !== "awaiting_acceptance") return;
+  const items = getOrderItems(order);
 
-  const product = findProduct(order.productId);
-  if (!product) {
-    alert("Produto nao encontrado no cardapio atual.");
+  if (!canFulfillItems(items)) {
+    alert("Estoque insuficiente para confirmar esse pedido.");
     return;
   }
 
-  const sale = createSaleFromProduct(product, order.quantity, order.price, {
-    source: "cardapio",
-    orderId: order.id,
-  });
-
-  if (!sale) {
-    alert("Estoque insuficiente para confirmar esse pedido.");
-    return;
+  const sales = [];
+  for (const item of items) {
+    const product = findProduct(item.productId);
+    if (!product) {
+      alert("Produto nao encontrado no cardapio atual.");
+      return;
+    }
+    const sale = createSaleFromProduct(product, item.quantity, item.price, {
+      source: "cardapio",
+      orderId: order.id,
+    });
+    if (sale) sales.push(sale);
   }
 
   const now = new Date().toISOString();
@@ -1558,7 +2702,8 @@ function acceptMenuOrder(orderId) {
   order.acceptedAt = now;
   order.confirmedAt = now;
   order.statusUpdatedAt = now;
-  order.saleId = sale.id;
+  order.saleId = sales[0]?.id || "";
+  order.saleIds = sales.map((sale) => sale.id);
   saveState();
   renderAll();
 }
@@ -1692,6 +2837,38 @@ function validateBackup(data) {
   return ["ingredients", "products", "purchases", "sales"].every((key) => Array.isArray(data[key]));
 }
 
+function getBackupMeta() {
+  try {
+    return JSON.parse(localStorage.getItem(BACKUP_META_KEY)) || {};
+  } catch {
+    return {};
+  }
+}
+
+function saveBackupMeta() {
+  localStorage.setItem(BACKUP_META_KEY, JSON.stringify({ lastBackupAt: new Date().toISOString() }));
+}
+
+function renderBackupWarning() {
+  const warning = $("#backupWarning");
+  if (!warning) return;
+  const lastBackupAt = getBackupMeta().lastBackupAt;
+  const days = lastBackupAt ? Math.floor((Date.now() - new Date(lastBackupAt).getTime()) / 86400000) : null;
+  if (days !== null && days <= 3) {
+    warning.classList.add("hidden");
+    warning.innerHTML = "";
+    return;
+  }
+
+  const message =
+    days === null
+      ? "Nenhum backup foi registrado neste navegador. Recomendamos exportar um backup hoje."
+      : `Seu ultimo backup foi realizado ha ${days} dias. Recomendamos gerar um novo backup.`;
+  warning.classList.remove("hidden");
+  warning.innerHTML = `<strong>Backup recomendado</strong><span>${message}</span><button class="ghost-button" type="button" data-go-tab="settings">Abrir configuracoes</button>`;
+  warning.querySelector("[data-go-tab]")?.addEventListener("click", (event) => activateTab(event.currentTarget.dataset.goTab));
+}
+
 function downloadText(filename, text, type) {
   const blob = new Blob([text], { type });
   const url = URL.createObjectURL(blob);
@@ -1707,6 +2884,8 @@ function downloadText(filename, text, type) {
 function exportBackup() {
   const payload = JSON.stringify(normalizeState(state), null, 2);
   downloadText(`burgerstock-backup-${new Date().toISOString().slice(0, 10)}.json`, payload, "application/json");
+  saveBackupMeta();
+  renderBackupWarning();
 }
 
 function importBackupFile(file) {
@@ -1834,6 +3013,10 @@ function bindEvents() {
     });
   });
 
+  $$("[data-go-tab]").forEach((button) => {
+    button.addEventListener("click", () => activateTab(button.dataset.goTab));
+  });
+
   $("#setupForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const name = $("#setupName").value.trim();
@@ -1900,6 +3083,78 @@ function bindEvents() {
     renderDigitalMenu();
   });
 
+  $("#autoPrintOrders").addEventListener("change", () => {
+    printSettings.autoPrintOrders = $("#autoPrintOrders").checked;
+    savePrintSettings();
+  });
+
+  $("#soundOrders").addEventListener("change", () => {
+    soundSettings.enabled = $("#soundOrders").checked;
+    saveSoundSettings();
+    if (soundSettings.enabled) playNewOrderSound();
+  });
+
+  $("#cashDate").addEventListener("change", renderCashClosing);
+
+  $("#financePeriodMode").addEventListener("change", () => {
+    reportFilter.mode = $("#financePeriodMode").value;
+    renderAll();
+  });
+  $("#financePeriodStart").addEventListener("change", () => {
+    reportFilter.start = $("#financePeriodStart").value;
+    reportFilter.mode = "custom";
+    renderAll();
+  });
+  $("#financePeriodEnd").addEventListener("change", () => {
+    reportFilter.end = $("#financePeriodEnd").value;
+    reportFilter.mode = "custom";
+    renderAll();
+  });
+  ["#cashCounted", "#pixCounted", "#cardCounted"].forEach((selector) => {
+    $(selector).addEventListener("input", () => {
+      renderCashConference();
+    });
+  });
+  $("#cashConferenceNote").addEventListener("input", () => renderCashConference());
+
+  $("#expenseForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const expenseId = $("#expenseId").value;
+    const category = $("#expenseCategory").value;
+    const description = $("#expenseDescription").value.trim();
+    const amount = toNumber($("#expenseAmount").value);
+    const date = $("#expenseDate").value ? new Date(`${$("#expenseDate").value}T12:00:00`).toISOString() : new Date().toISOString();
+
+    if (!description || amount <= 0) {
+      alert("Informe descricao e valor valido para a despesa.");
+      return;
+    }
+
+    if (expenseId) {
+      const expense = findExpense(expenseId);
+      if (!expense) return;
+      expense.category = category;
+      expense.description = description;
+      expense.amount = amount;
+      expense.date = date;
+      expense.updatedAt = new Date().toISOString();
+    } else {
+      state.expenses.push({
+        id: createId(),
+        category,
+        description,
+        amount,
+        date,
+        updatedAt: "",
+      });
+    }
+
+    resetExpenseForm();
+    saveState();
+    renderAll();
+  });
+  $("#cancelExpenseEdit").addEventListener("click", resetExpenseForm);
+
   $("#periodMode").addEventListener("change", () => {
     reportFilter.mode = $("#periodMode").value;
     renderAll();
@@ -1935,6 +3190,16 @@ function bindEvents() {
     if (ingredientId) {
       ingredient = findIngredient(ingredientId);
       if (!ingredient) return;
+      const isUnitInUse =
+        ingredient.unit !== unit &&
+        (state.products.some((product) => product.recipe.some((line) => line.ingredientId === ingredient.id)) ||
+          state.purchases.some((purchase) => purchase.ingredientId === ingredient.id) ||
+          state.sales.some((sale) => getSaleRecipe(sale).some((line) => line.ingredientId === ingredient.id)) ||
+          state.movements.some((movement) => movement.ingredientId === ingredient.id));
+      if (isUnitInUse) {
+        alert("Nao e possivel alterar a unidade de um ingrediente que ja possui ficha tecnica, compra, venda ou movimentacao. Crie um novo ingrediente se precisar usar outra unidade.");
+        return;
+      }
       ingredient.name = name;
       ingredient.unit = unit;
       ingredient.stock = stock;
@@ -1975,6 +3240,15 @@ function bindEvents() {
   $("#cancelPurchaseEdit").addEventListener("click", resetPurchaseForm);
 
   $("#addRecipeLine").addEventListener("click", () => addRecipeLine());
+  $("#recipeIngredientSearch").addEventListener("input", renderRecipeSearchResults);
+  $("#recipeIngredientSearch").addEventListener("focus", renderRecipeSearchResults);
+  $("#recipeQuickQuantity").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      addRecipeLineFromQuickAdd();
+    }
+  });
+  $("#addRecipeSearchLine").addEventListener("click", () => addRecipeLineFromQuickAdd());
 
   $("#productForm").addEventListener("submit", (event) => {
     event.preventDefault();
@@ -2182,4 +3456,6 @@ function bindEvents() {
 
 bindEvents();
 addRecipeLine();
+resetExpenseForm();
 renderAll();
+setInterval(renderKitchen, 15000);

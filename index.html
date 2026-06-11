@@ -71,14 +71,15 @@
         </div>
 
         <nav class="tabs" aria-label="Navegacao principal">
-          <button class="tab-button active" data-tab="dashboard" type="button">Painel</button>
-          <button class="tab-button" data-tab="sales" type="button">Vendas</button>
-          <button class="tab-button admin-only" data-tab="purchases" type="button">Compras</button>
+          <button class="tab-button active" data-tab="dashboard" type="button">Dashboard</button>
+          <button class="tab-button" data-tab="menu" type="button">Pedidos</button>
+          <button class="tab-button" data-tab="cardapio" type="button">Cardapio</button>
+          <button class="tab-button admin-only" data-tab="products" type="button">Produtos</button>
           <button class="tab-button admin-only" data-tab="inventory" type="button">Estoque</button>
-          <button class="tab-button admin-only" data-tab="products" type="button">Hamburgueres</button>
-          <button class="tab-button" data-tab="menu" type="button">Cardapio</button>
-          <button class="tab-button admin-only" data-tab="investment" type="button">Investimento</button>
+          <button class="tab-button admin-only" data-tab="finance" type="button">Financeiro</button>
+          <button class="tab-button admin-only" data-tab="reports" type="button">Relatorios</button>
           <button id="usersTabButton" class="tab-button admin-only hidden" data-tab="users" type="button">Usuarios</button>
+          <button class="tab-button admin-only" data-tab="settings" type="button">Configuracoes</button>
         </nav>
       </aside>
 
@@ -90,14 +91,11 @@
           </div>
           <div class="topbar-actions">
             <span id="currentUserBadge" class="user-badge"></span>
-            <button id="seedData" class="ghost-button admin-only" type="button">Carregar exemplo</button>
-            <button id="exportBackup" class="ghost-button admin-only" type="button">Exportar backup</button>
-            <button id="importBackup" class="ghost-button admin-only" type="button">Importar backup</button>
-            <button id="clearData" class="danger-button admin-only" type="button">Limpar dados</button>
             <button id="logoutButton" class="ghost-button" type="button">Sair</button>
           </div>
-          <input id="backupFile" class="hidden" type="file" accept="application/json,.json" />
         </header>
+
+        <div id="backupWarning" class="backup-warning hidden"></div>
 
         <section id="dashboard" class="tab-panel active">
           <section class="panel filter-panel">
@@ -166,6 +164,7 @@
                       <th>Ingrediente</th>
                       <th>Saldo</th>
                       <th>Minimo</th>
+                      <th>Status</th>
                       <th>Sugerido comprar</th>
                     </tr>
                   </thead>
@@ -186,18 +185,6 @@
             </section>
           </div>
 
-          <section class="panel exports-panel admin-only">
-            <div class="panel-header">
-              <h2>Exportar relatorios CSV</h2>
-            </div>
-            <div class="export-actions">
-              <button class="ghost-button export-csv" type="button" data-report="sales">Vendas</button>
-              <button class="ghost-button export-csv" type="button" data-report="purchases">Compras</button>
-              <button class="ghost-button export-csv" type="button" data-report="inventory">Estoque</button>
-              <button class="ghost-button export-csv" type="button" data-report="products">Produtos</button>
-              <button class="ghost-button export-csv" type="button" data-report="cmv">CMV e lucro</button>
-            </div>
-          </section>
         </section>
 
         <section id="sales" class="tab-panel">
@@ -253,6 +240,16 @@
         </section>
 
         <section id="purchases" class="tab-panel">
+          <section class="panel filter-panel">
+            <div class="panel-header">
+              <h2>Central de estoque</h2>
+            </div>
+            <div class="export-actions">
+              <button class="ghost-button" type="button" data-go-tab="inventory">Ingredientes</button>
+              <button class="ghost-button" type="button" data-go-tab="purchases">Compras</button>
+              <button class="ghost-button" type="button" data-go-tab="movements">Movimentacoes</button>
+            </div>
+          </section>
           <div class="grid-two">
             <form id="purchaseForm" class="panel form-panel">
               <div class="panel-header">
@@ -300,6 +297,16 @@
         </section>
 
         <section id="inventory" class="tab-panel">
+          <section class="panel filter-panel">
+            <div class="panel-header">
+              <h2>Central de estoque</h2>
+            </div>
+            <div class="export-actions">
+              <button class="ghost-button" type="button" data-go-tab="inventory">Ingredientes</button>
+              <button class="ghost-button" type="button" data-go-tab="purchases">Compras</button>
+              <button class="ghost-button" type="button" data-go-tab="movements">Movimentacoes</button>
+            </div>
+          </section>
           <div class="grid-two">
             <form id="ingredientForm" class="panel form-panel">
               <div class="panel-header">
@@ -423,7 +430,19 @@
                     <strong>Ficha tecnica do estoque</strong>
                     <small>Informe todas as materias-primas usadas em 1 unidade vendida.</small>
                   </div>
-                  <button id="addRecipeLine" class="ghost-button" type="button">+ Materia-prima</button>
+                  <button id="addRecipeLine" class="ghost-button" type="button">+ Linha manual</button>
+                </div>
+                <div class="recipe-quick-add">
+                  <label>
+                    Buscar materia-prima
+                    <input id="recipeIngredientSearch" type="search" placeholder="Digite carne, queijo, molho..." />
+                  </label>
+                  <label>
+                    Qtd. usada
+                    <input id="recipeQuickQuantity" type="number" min="0.01" step="0.01" placeholder="Ex.: 100" />
+                  </label>
+                  <button id="addRecipeSearchLine" class="ghost-button" type="button">Adicionar</button>
+                  <div id="recipeSearchResults" class="recipe-search-results"></div>
                 </div>
                 <div id="recipeLines" class="recipe-lines"></div>
                 <div class="recipe-preview">
@@ -450,7 +469,7 @@
           <div class="menu-page">
             <section class="panel menu-products-panel">
               <div class="panel-header">
-                <h2>Cardapio digital</h2>
+                <h2>Caixa de pedido</h2>
               </div>
               <div id="digitalMenuList" class="digital-menu-list"></div>
             </section>
@@ -476,10 +495,262 @@
                     <option value="canceled">Cancelado</option>
                   </select>
                 </label>
+                <label class="check-row print-toggle">
+                  <input id="autoPrintOrders" type="checkbox" checked />
+                  Impressao automatica
+                </label>
+                <label class="check-row print-toggle">
+                  <input id="soundOrders" type="checkbox" checked />
+                  Alerta sonoro
+                </label>
+                <button class="ghost-button" type="button" data-go-tab="sales">Venda manual</button>
               </div>
               <div id="menuOrderList" class="menu-order-board"></div>
             </section>
           </div>
+        </section>
+
+        <section id="cardapio" class="tab-panel">
+          <section class="panel">
+            <div class="panel-header">
+              <h2>Cardapio publicado</h2>
+            </div>
+            <div id="menuCatalogList" class="digital-menu-list"></div>
+          </section>
+        </section>
+
+        <section id="kitchen" class="tab-panel">
+          <section class="panel">
+            <div class="panel-header">
+              <h2>Cozinha</h2>
+            </div>
+            <div id="kitchenBoard" class="kitchen-board"></div>
+          </section>
+        </section>
+
+        <section id="cash" class="tab-panel">
+          <section class="panel filter-panel">
+            <div class="panel-header">
+              <h2>Fechamento de caixa</h2>
+            </div>
+            <div class="filter-grid">
+              <label>
+                Data
+                <input id="cashDate" type="date" />
+              </label>
+            </div>
+          </section>
+          <div id="cashSummary" class="stats-grid"></div>
+        </section>
+
+        <section id="finance" class="tab-panel admin-only hidden">
+          <section class="panel filter-panel">
+            <div class="panel-header">
+              <h2>Central financeira</h2>
+            </div>
+            <div class="filter-grid">
+              <label>
+                Periodo
+                <select id="financePeriodMode">
+                  <option value="all">Todo periodo</option>
+                  <option value="today">Hoje</option>
+                  <option value="week">Semana</option>
+                  <option value="month">Mes</option>
+                  <option value="custom">Personalizado</option>
+                </select>
+              </label>
+              <label>
+                Inicio
+                <input id="financePeriodStart" type="date" />
+              </label>
+              <label>
+                Fim
+                <input id="financePeriodEnd" type="date" />
+              </label>
+            </div>
+            <div class="export-actions">
+              <button class="ghost-button" type="button" data-go-tab="investment">CMV e investimento detalhado</button>
+              <button class="ghost-button" type="button" data-go-tab="cash">Fechamento por data</button>
+            </div>
+          </section>
+
+          <div id="financeSummaryCards" class="stats-grid"></div>
+
+          <div class="grid-two">
+            <section class="panel">
+              <div class="panel-header">
+                <h2>Entradas</h2>
+              </div>
+              <div id="financeEntries" class="finance-list"></div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <h2>Saidas</h2>
+              </div>
+              <div id="financeOutflows" class="finance-list"></div>
+            </section>
+          </div>
+
+          <div class="grid-two">
+            <form id="expenseForm" class="panel form-panel">
+              <div class="panel-header">
+                <h2 id="expenseFormTitle">Nova despesa operacional</h2>
+              </div>
+              <input id="expenseId" type="hidden" />
+              <label>
+                Categoria
+                <select id="expenseCategory">
+                  <option value="Aluguel">Aluguel</option>
+                  <option value="Energia">Energia</option>
+                  <option value="Agua">Agua</option>
+                  <option value="Internet">Internet</option>
+                  <option value="Embalagens">Embalagens</option>
+                  <option value="Motoboy">Motoboy</option>
+                  <option value="Taxa de maquininha">Taxa de maquininha</option>
+                  <option value="Marketing">Marketing</option>
+                  <option value="Outros">Outros</option>
+                </select>
+              </label>
+              <label>
+                Descricao
+                <input id="expenseDescription" type="text" placeholder="Ex.: conta de energia" required />
+              </label>
+              <label>
+                Valor
+                <input id="expenseAmount" type="number" min="0.01" step="0.01" required />
+              </label>
+              <label>
+                Data
+                <input id="expenseDate" type="date" required />
+              </label>
+              <div class="form-actions">
+                <button id="expenseSubmit" type="submit">Salvar despesa</button>
+                <button id="cancelExpenseEdit" class="ghost-button hidden" type="button">Cancelar edicao</button>
+              </div>
+            </form>
+
+            <section class="panel">
+              <div class="panel-header">
+                <h2>Despesas do periodo</h2>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Data</th>
+                      <th>Categoria</th>
+                      <th>Descricao</th>
+                      <th>Valor</th>
+                      <th>Acoes</th>
+                    </tr>
+                  </thead>
+                  <tbody id="expensesTable"></tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+
+          <section class="panel">
+            <div class="panel-header">
+              <h2>Conferencia do caixa</h2>
+            </div>
+            <div class="filter-grid">
+              <label>
+                Dinheiro contado
+                <input id="cashCounted" type="number" min="0" step="0.01" />
+              </label>
+              <label>
+                Pix conferido
+                <input id="pixCounted" type="number" min="0" step="0.01" />
+              </label>
+              <label>
+                Cartao conferido
+                <input id="cardCounted" type="number" min="0" step="0.01" />
+              </label>
+              <label>
+                Observacoes
+                <input id="cashConferenceNote" type="text" placeholder="Ex.: faltou troco, pix pendente..." />
+              </label>
+            </div>
+            <div id="cashConference" class="finance-list"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <h2>Historico financeiro</h2>
+            </div>
+            <div id="financeMovementsTable" class="finance-timeline"></div>
+          </section>
+        </section>
+
+        <section id="movements" class="tab-panel admin-only hidden">
+          <section class="panel filter-panel">
+            <div class="panel-header">
+              <h2>Central de estoque</h2>
+            </div>
+            <div class="export-actions">
+              <button class="ghost-button" type="button" data-go-tab="inventory">Ingredientes</button>
+              <button class="ghost-button" type="button" data-go-tab="purchases">Compras</button>
+              <button class="ghost-button" type="button" data-go-tab="movements">Movimentacoes</button>
+            </div>
+          </section>
+          <section class="panel">
+            <div class="panel-header">
+              <h2>Historico de movimentacao de estoque</h2>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Tipo</th>
+                    <th>Ingrediente</th>
+                    <th>Quantidade</th>
+                    <th>Origem</th>
+                  </tr>
+                </thead>
+                <tbody id="movementsTable"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section id="reports" class="tab-panel admin-only hidden">
+          <section class="panel">
+            <div class="panel-header">
+              <h2>Analises operacionais</h2>
+            </div>
+            <div id="reportInsights" class="report-insights"></div>
+          </section>
+
+          <section class="panel exports-panel">
+            <div class="panel-header">
+              <h2>Exportar relatorios CSV</h2>
+            </div>
+            <div class="export-actions">
+              <button class="ghost-button export-csv" type="button" data-report="sales">Vendas</button>
+              <button class="ghost-button export-csv" type="button" data-report="purchases">Compras</button>
+              <button class="ghost-button export-csv" type="button" data-report="inventory">Estoque</button>
+              <button class="ghost-button export-csv" type="button" data-report="products">Produtos</button>
+              <button class="ghost-button export-csv" type="button" data-report="cmv">CMV e lucro</button>
+            </div>
+          </section>
+        </section>
+
+        <section id="settings" class="tab-panel admin-only hidden">
+          <section class="panel">
+            <div class="panel-header">
+              <h2>Configuracoes e dados</h2>
+            </div>
+            <div class="export-actions settings-actions">
+              <button id="seedData" class="ghost-button" type="button">Carregar exemplo</button>
+              <button id="exportBackup" class="ghost-button" type="button">Exportar backup</button>
+              <button id="importBackup" class="ghost-button" type="button">Importar backup</button>
+              <button id="clearData" class="danger-button" type="button">Limpar dados</button>
+            </div>
+            <input id="backupFile" class="hidden" type="file" accept="application/json,.json" />
+          </section>
         </section>
 
         <section id="investment" class="tab-panel">
@@ -617,6 +888,7 @@
           Qtd. usada
           <input class="recipe-quantity" type="number" min="0.01" step="0.01" placeholder="Ex.: 1" required />
         </label>
+        <span class="recipe-unit">un</span>
         <button class="icon-button remove-line" type="button" title="Remover materia-prima">x</button>
       </div>
     </template>
