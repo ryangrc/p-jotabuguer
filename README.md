@@ -2,6 +2,8 @@
 
 Sistema simples para registrar compras e vendas de hamburgueres com controle de estoque.
 
+O modo atual salva dados e autentica usuarios apenas no navegador. Consulte [a revisao de seguranca](docs/SECURITY_REVIEW.md) para as protecoes aplicadas e os limites desse modo local.
+
 ## Como usar
 
 Abra o arquivo `index.html` no navegador.

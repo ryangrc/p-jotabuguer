@@ -2,7 +2,7 @@ const { authService } = require("../services/auth.service");
 
 const authController = {
   async setup(req, res) {
-    const result = await authService.setup(req.body);
+    const result = await authService.setup(req.body, req.get("X-Setup-Token"));
     res.status(201).json(result);
   },
 

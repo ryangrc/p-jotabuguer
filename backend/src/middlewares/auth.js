@@ -6,13 +6,13 @@ const { userService } = require("../services/user.service");
 async function requireAuth(req, _res, next) {
   try {
     const header = req.headers.authorization || "";
-    const [, token] = header.split(" ");
+    const token = /^Bearer ([^\s]+)$/i.exec(header)?.[1];
 
     if (!token) {
       throw new HttpError(401, "Token de acesso nao informado.");
     }
 
-    const payload = jwt.verify(token, env.jwtSecret);
+    const payload = jwt.verify(token, env.jwtSecret, { algorithms: ["HS256"] });
     const user = await userService.findById(payload.sub);
 
     if (!user || !user.active) {

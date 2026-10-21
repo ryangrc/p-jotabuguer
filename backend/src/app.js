@@ -9,6 +9,12 @@ const { errorHandler } = require("./middlewares/error-handler");
 function createApp() {
   const app = express();
 
+  app.disable("x-powered-by");
+  app.use((_req, res, next) => {
+    res.set("X-Content-Type-Options", "nosniff");
+    res.set("Cache-Control", "no-store");
+    next();
+  });
   app.use(cors({ origin: env.corsOrigin, credentials: true }));
   app.use(express.json({ limit: "2mb" }));
   app.use(morgan(env.nodeEnv === "production" ? "combined" : "dev"));

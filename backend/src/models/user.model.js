@@ -1,4 +1,4 @@
-const { query } = require("../database/pool");
+const { query, transaction } = require("../database/pool");
 
 function mapUser(row) {
   if (!row) return null;
@@ -14,6 +14,21 @@ function mapUser(row) {
 }
 
 const userModel = {
+  async createInitialAdmin(data) {
+    return transaction(async (client) => {
+      await client.query("LOCK TABLE users IN EXCLUSIVE MODE");
+      const existing = await client.query("select count(*)::int as total from users");
+      if (existing.rows[0].total > 0) {
+        const { HttpError } = require("../utils/http-error");
+        throw new HttpError(409, "Administrador inicial ja foi criado.");
+      }
+      const result = await client.query(
+        "insert into users (name, email, password_hash, role, active) values ($1, lower($2), $3, 'admin', true) returning *",
+        [data.name, data.email, data.passwordHash],
+      );
+      return mapUser(result.rows[0]);
+    });
+  },
   async count() {
     const result = await query("select count(*)::int as total from users");
     return result.rows[0].total;

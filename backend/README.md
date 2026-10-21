@@ -19,7 +19,7 @@ API inicial para evoluir o sistema local da hamburgueria para arquitetura client
 cp .env.example .env
 ```
 
-2. Ajuste `DATABASE_URL` no `.env`.
+2. Ajuste `DATABASE_URL` no `.env`. Gere dois segredos independentes com `node -e "console.log(require('node:crypto').randomBytes(48).toString('hex'))"` e configure `JWT_SECRET` e `SETUP_TOKEN`. Nunca coloque esses valores no frontend ou no Git.
 
 3. Instale as dependencias:
 
@@ -49,7 +49,7 @@ http://localhost:3333
 
 Autenticacao:
 
-- `POST /api/auth/setup`: cria o primeiro administrador.
+- `POST /api/auth/setup`: cria o primeiro administrador; exige o cabecalho `X-Setup-Token` com o valor de `SETUP_TOKEN`. Sem essa variavel, o endpoint fica desabilitado. Remova `SETUP_TOKEN` depois de criar o administrador.
 - `POST /api/auth/login`: retorna JWT.
 - `GET /api/auth/me`: retorna usuario logado.
 
@@ -108,3 +108,11 @@ O backend emite eventos Socket.IO:
 - `order:updated`
 
 Esses eventos serao usados pelo painel no computador e pelo iPhone para sincronizar pedidos em tempo real.
+
+Conexoes Socket.IO exigem `auth: { token: jwtDeLogin }`. O token e o usuario ativo sao verificados na conexao. A revogacao de conexoes ja abertas e a invalidacao imediata de JWTs apos troca de senha ainda precisam ser implementadas antes de uma implantacao com esses requisitos.
+
+## Seguranca e testes
+
+Execute `npm ci`, `npm test` e `npm audit --omit=dev`. O limite de autenticacao e de 10 requisicoes por IP a cada 15 minutos, compartilhado entre login e setup, em memoria por processo. Para varias instancias, configure armazenamento compartilhado; atras de proxy, configure `trust proxy` conforme a infraestrutura, nunca aceitando indiscriminadamente cabecalhos enviados pelo cliente.
+
+Em producao, a API recusa um JWT_SECRET ausente, curto ou com o texto dos exemplos. Em desenvolvimento, a ausencia gera um segredo temporario e reiniciar invalida os tokens. Use HTTPS e configure CORS_ORIGIN com as origens reais. A criacao inicial usa uma transacao e bloqueio da tabela users para serializar requisicoes concorrentes.

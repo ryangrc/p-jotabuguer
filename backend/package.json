@@ -5,6 +5,7 @@
   "description": "API do ERP/PDV Pjotabuguer com Express, PostgreSQL e JWT.",
   "main": "src/server.js",
   "scripts": {
+    "test": "node --test test/*.test.js",
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
     "db:migrate": "node src/database/migrate.js",
@@ -15,6 +16,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "express-rate-limit": "^8.7.1",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
     "pg": "^8.13.1",

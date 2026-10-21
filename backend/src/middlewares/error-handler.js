@@ -1,5 +1,5 @@
 function errorHandler(error, _req, res, _next) {
-  const status = error.status || 500;
+  const status = error.name === "ZodError" ? 400 : (error.status || 500);
 
   if (status >= 500) {
     console.error(error);
@@ -7,8 +7,8 @@ function errorHandler(error, _req, res, _next) {
 
   res.status(status).json({
     error: {
-      message: error.message || "Erro interno do servidor.",
-      details: error.details || null,
+      message: status >= 500 ? "Erro interno do servidor." : (error.name === "ZodError" ? "Dados invalidos." : error.message),
+      details: null,
     },
   });
 }

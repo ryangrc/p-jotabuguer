@@ -832,7 +832,7 @@ function ingredientOptions(selectedId = "") {
   return state.ingredients
     .map(
       (item) =>
-        `<option value="${item.id}" ${item.id === selectedId ? "selected" : ""}>${escapeHtml(item.name)} (${escapeHtml(item.unit)})</option>`,
+        `<option value="${escapeHtml(item.id)}" ${item.id === selectedId ? "selected" : ""}>${escapeHtml(item.name)} (${escapeHtml(item.unit)})</option>`,
     )
     .join("");
 }
@@ -841,7 +841,7 @@ function productOptions(selectedId = "") {
   return state.products
     .map(
       (product) =>
-        `<option value="${product.id}" ${product.id === selectedId ? "selected" : ""}>${escapeHtml(product.name)}</option>`,
+        `<option value="${escapeHtml(product.id)}" ${product.id === selectedId ? "selected" : ""}>${escapeHtml(product.name)}</option>`,
     )
     .join("");
 }
@@ -1242,8 +1242,8 @@ function renderUsers() {
           <td>${user.role === "admin" ? "Administrador" : "Operador"}</td>
           <td>
             <div class="row-actions">
-              <button class="ghost-button edit-user" type="button" data-id="${user.id}">Editar</button>
-              <button class="danger-button delete-user" type="button" data-id="${user.id}">Excluir</button>
+              <button class="ghost-button edit-user" type="button" data-id="${escapeHtml(user.id)}">Editar</button>
+              <button class="danger-button delete-user" type="button" data-id="${escapeHtml(user.id)}">Excluir</button>
             </div>
           </td>
         </tr>`,
@@ -1323,9 +1323,9 @@ function renderInventory() {
           <td><span class="badge ${status.className}">${status.label}</span></td>
           <td>
             <div class="row-actions">
-              <button class="ghost-button edit-ingredient" type="button" data-id="${item.id}">Editar</button>
-              <button class="ghost-button restock-ingredient" type="button" data-id="${item.id}">Repor</button>
-              <button class="danger-button delete-ingredient" type="button" data-id="${item.id}">Excluir</button>
+              <button class="ghost-button edit-ingredient" type="button" data-id="${escapeHtml(item.id)}">Editar</button>
+              <button class="ghost-button restock-ingredient" type="button" data-id="${escapeHtml(item.id)}">Repor</button>
+              <button class="danger-button delete-ingredient" type="button" data-id="${escapeHtml(item.id)}">Excluir</button>
             </div>
           </td>
         </tr>`;
@@ -1365,8 +1365,8 @@ function renderProducts() {
             <strong>${escapeHtml(product.name)} - ${currency.format(product.price)}</strong>
             <div class="row-actions">
               ${pendingRecipe ? `<span class="badge warn">Ficha pendente</span>` : ""}
-              <button class="ghost-button edit-product" type="button" data-id="${product.id}">Editar</button>
-              <button class="danger-button delete-product" type="button" data-id="${product.id}">Excluir</button>
+              <button class="ghost-button edit-product" type="button" data-id="${escapeHtml(product.id)}">Editar</button>
+              <button class="danger-button delete-product" type="button" data-id="${escapeHtml(product.id)}">Excluir</button>
             </div>
           </div>
           <small>Baixa automatica de estoque ao vender 1 unidade:</small>
@@ -1412,9 +1412,9 @@ function renderDigitalMenu() {
             <strong>${escapeHtml(publicName)}</strong>
             <small>${currency.format(product.price)} - disponivel ${available}</small>
           </div>
-          <button class="icon-button quick-decrease" type="button" data-id="${product.id}">-</button>
+          <button class="icon-button quick-decrease" type="button" data-id="${escapeHtml(product.id)}">-</button>
           <span>${selected}</span>
-          <button class="icon-button quick-increase" type="button" data-id="${product.id}">+</button>
+          <button class="icon-button quick-increase" type="button" data-id="${escapeHtml(product.id)}">+</button>
         </div>`;
       }).join("") || `<div class="empty">Nenhum produto disponivel. Confira ficha tecnica e estoque.</div>`
         }
@@ -1525,16 +1525,16 @@ function renderDigitalMenu() {
           <p>${getPaymentMethodLabel(order.paymentMethod)} - ${currency.format(order.total)}</p>
           <p>${escapeHtml(order.note || "Sem observacao")}</p>
           <div class="row-actions">
-            <button class="ghost-button print-menu-order" type="button" data-id="${order.id}">Imprimir</button>
+            <button class="ghost-button print-menu-order" type="button" data-id="${escapeHtml(order.id)}">Imprimir</button>
             ${
               canAccept
-                ? `<button class="ghost-button accept-menu-order" type="button" data-id="${order.id}">Aceitar pedido</button>
-                   <button class="danger-button cancel-menu-order" type="button" data-id="${order.id}">Cancelar</button>`
+                ? `<button class="ghost-button accept-menu-order" type="button" data-id="${escapeHtml(order.id)}">Aceitar pedido</button>
+                   <button class="danger-button cancel-menu-order" type="button" data-id="${escapeHtml(order.id)}">Cancelar</button>`
                 : ""
             }
             ${
               canAdvance
-                ? `<button class="ghost-button advance-menu-order" type="button" data-id="${order.id}">Avancar para ${getOrderStatusLabel(order, status.next)}</button>`
+                ? `<button class="ghost-button advance-menu-order" type="button" data-id="${escapeHtml(order.id)}">Avancar para ${getOrderStatusLabel(order, status.next)}</button>`
                 : ""
             }
           </div>
@@ -1851,8 +1851,8 @@ function renderExpensesTable(data = getFinanceMetrics()) {
           <td>${currency.format(expense.amount)}</td>
           <td>
             <div class="row-actions">
-              <button class="ghost-button edit-expense" type="button" data-id="${expense.id}">Editar</button>
-              <button class="danger-button delete-expense" type="button" data-id="${expense.id}">Excluir</button>
+              <button class="ghost-button edit-expense" type="button" data-id="${escapeHtml(expense.id)}">Editar</button>
+              <button class="danger-button delete-expense" type="button" data-id="${escapeHtml(expense.id)}">Excluir</button>
             </div>
           </td>
         </tr>`,
@@ -1894,12 +1894,12 @@ function renderKitchen() {
               <div class="row-actions">
                 ${
                   order.status === "awaiting_acceptance"
-                    ? `<button class="ghost-button accept-menu-order" type="button" data-id="${order.id}">Aceitar</button>`
+                    ? `<button class="ghost-button accept-menu-order" type="button" data-id="${escapeHtml(order.id)}">Aceitar</button>`
                     : ""
                 }
                 ${
                   order.status !== "awaiting_acceptance"
-                    ? `<button class="ghost-button advance-menu-order" type="button" data-id="${order.id}">Avancar</button>`
+                    ? `<button class="ghost-button advance-menu-order" type="button" data-id="${escapeHtml(order.id)}">Avancar</button>`
                     : ""
                 }
               </div>
@@ -2116,8 +2116,8 @@ function renderPurchases() {
           <td>${currency.format(purchase.cost)}</td>
           <td>
             <div class="row-actions">
-              <button class="ghost-button edit-purchase" type="button" data-id="${purchase.id}">Editar</button>
-              <button class="danger-button delete-purchase" type="button" data-id="${purchase.id}">Excluir</button>
+              <button class="ghost-button edit-purchase" type="button" data-id="${escapeHtml(purchase.id)}">Editar</button>
+              <button class="danger-button delete-purchase" type="button" data-id="${escapeHtml(purchase.id)}">Excluir</button>
             </div>
           </td>
         </tr>`,
@@ -2146,7 +2146,7 @@ function renderSales() {
           <td>${currency.format(sale.total)}</td>
           <td>
             <div class="row-actions">
-              <button class="ghost-button edit-sale" type="button" data-id="${sale.id}">Editar</button>
+              <button class="ghost-button edit-sale" type="button" data-id="${escapeHtml(sale.id)}">Editar</button>
             </div>
           </td>
         </tr>`,
@@ -2189,7 +2189,7 @@ function renderRecipeSearchResults() {
     matches
       .map(
         (ingredient) =>
-          `<button class="recipe-search-option" type="button" data-id="${ingredient.id}">${escapeHtml(ingredient.name)} (${escapeHtml(ingredient.unit)})</button>`,
+          `<button class="recipe-search-option" type="button" data-id="${escapeHtml(ingredient.id)}">${escapeHtml(ingredient.name)} (${escapeHtml(ingredient.unit)})</button>`,
       )
       .join("") ||
     `<span class="empty">${state.ingredients.length ? "Nenhuma materia-prima encontrada." : "Cadastre materias-primas no estoque primeiro."}</span>`;
@@ -2582,7 +2582,7 @@ function clearQuickOrderDraft() {
 }
 
 function getMenuInput(productId, className) {
-  return document.querySelector(`.${className}[data-id="${productId}"]`);
+  return document.querySelector(`.${className}[data-id="${CSS.escape(productId)}"]`);
 }
 
 function createMenuOrder() {
@@ -2914,7 +2914,8 @@ function importBackupFile(file) {
 }
 
 function csvEscape(value) {
-  const text = String(value ?? "");
+  const raw = String(value ?? "");
+  const text = typeof value === "string" && /^[\s\u0000-\u001f]*[=+@-]/.test(raw) ? `'${raw}` : raw;
   return `"${text.replace(/"/g, '""')}"`;
 }
 

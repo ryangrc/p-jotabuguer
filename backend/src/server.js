@@ -15,6 +15,11 @@ const io = new Server(server, {
   },
 });
 
+const { requireAuth } = require("./middlewares/auth");
+io.use((socket, next) => {
+  requireAuth({ headers: { authorization: "Bearer " + (socket.handshake.auth?.token || "") } }, {}, next);
+});
+
 app.set("io", io);
 
 io.on("connection", (socket) => {
