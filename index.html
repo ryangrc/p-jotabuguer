@@ -5,8 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>P'jotabuguer - Registro de Compras e Vendas</title>
     <link rel="stylesheet" href="styles.css" />
+    <script src="config/app.config.js"></script>
   </head>
   <body>
+    <div class="cloud-bar" role="status" aria-live="polite"><span id="cloudMessage">Conectando ao servidor…</span>
+      <button id="reloadCloud" type="button">Atualizar conexão</button>
+      <button id="retryPending" class="hidden" type="button">Repetir envio</button>
+      <button id="downloadPending" class="hidden" type="button">Baixar rascunho</button>
+      <button id="discardPending" class="hidden" type="button">Descartar tentativa e atualizar</button>
+    </div>
+    <dialog id="passwordDialog"><form id="passwordForm" class="auth-form"><h2>Alterar senha</h2>
+      <label>Senha atual<input id="currentPassword" type="password" autocomplete="current-password" required></label>
+      <label>Nova senha<input id="newPassword" type="password" minlength="10" maxlength="72" autocomplete="new-password" required></label>
+      <label>Confirmar senha<input id="confirmPassword" type="password" autocomplete="new-password" required></label>
+      <button type="submit">Alterar e encerrar sessões</button><button id="cancelPassword" type="button">Cancelar</button>
+    </form></dialog>
+    <dialog id="resetDialog"><form id="resetForm" class="auth-form"><h2>Redefinir senha</h2>
+      <label>Nova senha<input id="resetPassword" type="password" minlength="10" maxlength="72" autocomplete="new-password" required></label>
+      <label>Confirmar senha<input id="resetConfirm" type="password" autocomplete="new-password" required></label>
+      <button type="submit">Salvar nova senha</button>
+    </form></dialog>
     <section id="authScreen" class="auth-screen">
       <div class="auth-card">
         <div class="brand auth-brand">
@@ -33,9 +51,10 @@
             <input id="setupEmail" type="email" required />
           </label>
           <label>
-            Senha alfanumerica
-            <input id="setupPassword" type="password" minlength="8" required />
+            Senha (10 caracteres ou mais)
+            <input id="setupPassword" type="password" minlength="10" required />
           </label>
+          <label>Chave de configuração inicial<input id="setupKey" type="password" autocomplete="off" required></label>
           <button type="submit">Criar administrador</button>
           <p id="setupMessage" class="hint"></p>
         </form>
@@ -51,6 +70,7 @@
             <input id="loginPassword" type="password" required />
           </label>
           <button type="submit">Entrar</button>
+          <button id="forgotPassword" type="button" class="ghost-button">Esqueci minha senha</button>
           <p id="loginMessage" class="hint"></p>
         </form>
       </div>
@@ -71,8 +91,11 @@
         </div>
 
         <nav class="tabs" aria-label="Navegacao principal">
-          <button class="tab-button active" data-tab="dashboard" type="button">Dashboard</button>
+          <button class="tab-button active admin-only" data-tab="dashboard" type="button">Dashboard</button>
           <button class="tab-button" data-tab="menu" type="button">Pedidos</button>
+          <button class="tab-button" data-tab="customers" type="button">Clientes</button>
+          <button class="tab-button" data-tab="kitchen" type="button">Cozinha</button>
+          <button class="tab-button" data-tab="deliveries" type="button">Entregas</button>
           <button class="tab-button" data-tab="cardapio" type="button">Cardapio</button>
           <button class="tab-button admin-only" data-tab="products" type="button">Produtos</button>
           <button class="tab-button admin-only" data-tab="inventory" type="button">Estoque</button>
@@ -91,13 +114,19 @@
           </div>
           <div class="topbar-actions">
             <span id="currentUserBadge" class="user-badge"></span>
+            <button id="changePassword" class="ghost-button" type="button">Alterar senha</button>
             <button id="logoutButton" class="ghost-button" type="button">Sair</button>
           </div>
         </header>
 
+        <div class="cloud-migration admin-only"><strong>Dados compartilhados</strong>
+          <p>Importe o backup JSON da versão antiga ou recupere uma versão anterior. Usuários antigos precisam ser cadastrados novamente com senhas novas.</p>
+          <button id="migrateLocal" type="button">Migrar dados deste navegador</button>
+          <button id="recoverVersion" type="button">Recuperar versão anterior</button>
+        </div>
         <div id="backupWarning" class="backup-warning hidden"></div>
 
-        <section id="dashboard" class="tab-panel active">
+        <section id="dashboard" class="tab-panel active admin-only">
           <section class="panel filter-panel">
             <div class="panel-header">
               <h2>Relatorio por periodo</h2>
@@ -126,29 +155,29 @@
 
           <div class="stats-grid">
             <article class="stat-card">
-              <span>Faturamento</span>
+              <span>Vendas do dia</span>
               <strong id="statRevenue">R$ 0,00</strong>
-              <small>Vendas no periodo</small>
+              <small>Faturamento de hoje</small>
             </article>
             <article class="stat-card">
-              <span>Compras realizadas</span>
-              <strong id="statCosts">R$ 0,00</strong>
-              <small>Compras no periodo</small>
+              <span>Pedidos em aberto</span>
+              <strong id="statOpenOrders">0</strong>
+              <small>Aguardando/producao/pronto</small>
             </article>
             <article class="stat-card">
-              <span>CMV vendido</span>
-              <strong id="statSoldCmv">R$ 0,00</strong>
-              <small>Custo das vendas</small>
+              <span>Lucro do dia</span>
+              <strong id="statDayProfit">R$ 0,00</strong>
+              <small>Lucro real estimado</small>
             </article>
             <article class="stat-card">
-              <span>Lucro bruto</span>
-              <strong id="statProfit">R$ 0,00</strong>
-              <small>Faturamento menos CMV</small>
+              <span>Estoque critico</span>
+              <strong id="statCriticalCount">0</strong>
+              <small>Itens para agir</small>
             </article>
             <article class="stat-card">
-              <span>Investido em estoque</span>
-              <strong id="statDashboardStockValue">R$ 0,00</strong>
-              <small>Saldo atual x custo medio</small>
+              <span>Produto mais vendido</span>
+              <strong id="statTopProduct">-</strong>
+              <small>Hoje</small>
             </article>
           </div>
 
@@ -175,7 +204,7 @@
 
             <section class="panel">
               <div class="panel-header">
-                <h2>Resumo do periodo</h2>
+                <h2>Ultimos pedidos</h2>
               </div>
               <div class="table-wrap">
                 <table>
@@ -348,6 +377,28 @@
                 </label>
                 <button id="registerIngredientRestock" class="ghost-button" type="button">Registrar reposicao</button>
               </div>
+              <div class="recipe-preview compact">
+                <strong>Ajuste manual / perda</strong>
+                <small>Use para perda, quebra, vencimento ou correcao. O motivo e obrigatorio.</small>
+                <label>
+                  Tipo
+                  <select id="stockAdjustmentType">
+                    <option value="ajuste">Ajuste</option>
+                    <option value="perda">Perda</option>
+                    <option value="quebra">Quebra</option>
+                    <option value="vencimento">Vencimento</option>
+                  </select>
+                </label>
+                <label>
+                  Quantidade a remover
+                  <input id="stockAdjustmentQuantity" type="number" min="0" step="0.01" value="0" />
+                </label>
+                <label>
+                  Motivo
+                  <input id="stockAdjustmentReason" type="text" placeholder="Ex.: produto vencido" />
+                </label>
+                <button id="registerStockAdjustment" class="ghost-button" type="button">Registrar ajuste</button>
+              </div>
               <div class="form-actions">
                 <button id="ingredientSubmit" type="submit">Adicionar ingrediente</button>
                 <button id="cancelIngredientEdit" class="ghost-button hidden" type="button">Cancelar edicao</button>
@@ -519,6 +570,41 @@
           </section>
         </section>
 
+        <section id="customers" class="tab-panel">
+          <section class="panel filter-panel">
+            <div class="panel-header">
+              <h2>Clientes</h2>
+            </div>
+            <div class="filter-grid">
+              <label>
+                Buscar
+                <input id="customerSearch" type="search" placeholder="Nome, telefone ou endereco" />
+              </label>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <h2>Cadastro automatico de clientes</h2>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Cliente</th>
+                    <th>Telefone</th>
+                    <th>Pedidos</th>
+                    <th>Total gasto</th>
+                    <th>Ultimo pedido</th>
+                    <th>Acoes</th>
+                  </tr>
+                </thead>
+                <tbody id="customersTable"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
         <section id="kitchen" class="tab-panel">
           <section class="panel">
             <div class="panel-header">
@@ -526,6 +612,23 @@
             </div>
             <div id="kitchenBoard" class="kitchen-board"></div>
           </section>
+        </section>
+
+        <section id="deliveries" class="tab-panel">
+          <div class="grid-two">
+            <section class="panel">
+              <div class="panel-header">
+                <h2>Entregas em andamento</h2>
+              </div>
+              <div id="deliveriesList" class="finance-list"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-header">
+                <h2>Indicadores de entrega</h2>
+              </div>
+              <div id="deliveryStats" class="finance-list"></div>
+            </section>
+          </div>
         </section>
 
         <section id="cash" class="tab-panel">
@@ -575,6 +678,43 @@
           </section>
 
           <div id="financeSummaryCards" class="stats-grid"></div>
+
+          <section class="panel">
+            <div class="panel-header">
+              <h2>Caixa profissional</h2>
+            </div>
+            <div id="cashStatus" class="finance-list"></div>
+            <div class="filter-grid">
+              <label>
+                Responsavel
+                <input id="cashResponsible" type="text" placeholder="Nome do responsavel" />
+              </label>
+              <label>
+                Valor inicial
+                <input id="cashOpeningAmount" type="number" min="0" step="0.01" />
+              </label>
+              <label>
+                Suprimento/Sangria
+                <select id="cashAdjustmentType">
+                  <option value="suprimento">Suprimento</option>
+                  <option value="sangria">Sangria</option>
+                </select>
+              </label>
+              <label>
+                Valor ajuste
+                <input id="cashAdjustmentAmount" type="number" min="0" step="0.01" />
+              </label>
+              <label>
+                Observacao do ajuste
+                <input id="cashAdjustmentNote" type="text" placeholder="Motivo do suprimento/sangria" />
+              </label>
+            </div>
+            <div class="form-actions">
+              <button id="openCashButton" type="button">Abrir caixa</button>
+              <button id="registerCashAdjustment" class="ghost-button" type="button">Registrar ajuste</button>
+              <button id="closeCashButton" class="danger-button" type="button">Fechar caixa</button>
+            </div>
+          </section>
 
           <div class="grid-two">
             <section class="panel">
@@ -739,17 +879,73 @@
         </section>
 
         <section id="settings" class="tab-panel admin-only hidden">
+          <div class="grid-two">
+            <form id="settingsForm" class="panel form-panel">
+              <div class="panel-header">
+                <h2>Dados da loja</h2>
+              </div>
+              <label>
+                Nome da empresa
+                <input id="settingCompanyName" type="text" />
+              </label>
+              <label>
+                Endereco
+                <input id="settingAddress" type="text" />
+              </label>
+              <label>
+                Telefone
+                <input id="settingPhone" type="tel" />
+              </label>
+              <label>
+                WhatsApp
+                <input id="settingWhatsapp" type="tel" />
+              </label>
+              <label>
+                Taxa padrao
+                <input id="settingDefaultDeliveryFee" type="number" min="0" step="0.01" />
+              </label>
+              <label>
+                Logo URL
+                <input id="settingLogoUrl" type="url" />
+              </label>
+              <label>
+                Mensagem da impressao
+                <textarea id="settingPrintMessage" rows="3"></textarea>
+              </label>
+              <button type="submit">Salvar configuracoes</button>
+            </form>
+
+            <section class="panel">
+              <div class="panel-header">
+                <h2>Configuracoes e dados</h2>
+              </div>
+              <div class="export-actions settings-actions">
+                <button id="seedData" class="ghost-button" type="button">Carregar exemplo</button>
+                <button id="exportBackup" class="ghost-button" type="button">Exportar backup</button>
+                <button id="importBackup" class="ghost-button" type="button">Importar backup</button>
+                <button id="clearData" class="danger-button" type="button">Limpar dados</button>
+              </div>
+              <input id="backupFile" class="hidden" type="file" accept="application/json,.json" />
+            </section>
+          </div>
+
           <section class="panel">
             <div class="panel-header">
-              <h2>Configuracoes e dados</h2>
+              <h2>Auditoria interna</h2>
             </div>
-            <div class="export-actions settings-actions">
-              <button id="seedData" class="ghost-button" type="button">Carregar exemplo</button>
-              <button id="exportBackup" class="ghost-button" type="button">Exportar backup</button>
-              <button id="importBackup" class="ghost-button" type="button">Importar backup</button>
-              <button id="clearData" class="danger-button" type="button">Limpar dados</button>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Usuario</th>
+                    <th>Acao</th>
+                    <th>Detalhe</th>
+                  </tr>
+                </thead>
+                <tbody id="auditTable"></tbody>
+              </table>
             </div>
-            <input id="backupFile" class="hidden" type="file" accept="application/json,.json" />
           </section>
         </section>
 
@@ -844,8 +1040,8 @@
                 </select>
               </label>
               <label>
-                Senha alfanumerica
-                <input id="userPassword" type="password" minlength="8" />
+                Senha (10 caracteres ou mais)
+                <input id="userPassword" type="password" minlength="10" />
               </label>
               <p class="hint">Use pelo menos 8 caracteres, com letras e numeros. Ao editar, deixe em branco para manter a senha atual.</p>
               <div class="form-actions">
@@ -893,6 +1089,12 @@
       </div>
     </template>
 
+    <script src="repositories/storage.repository.js"></script>
+    <script src="repositories/customer.repository.js"></script>
+    <script src="models/customer.model.js"></script>
+    <script src="services/customer.service.js"></script>
+    <script src="services/order-inventory.service.js"></script>
+    <script src="services/cloud-client.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

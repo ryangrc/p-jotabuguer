@@ -1,63 +1,85 @@
-# BurgerStock
+# PJ Burguer — versão compartilhada
 
-Sistema simples para registrar compras e vendas de hamburgueres com controle de estoque.
+Aplicação operacional com interface preservada, API na Vercel e PostgreSQL Neon. A fonte oficial dos dados é o servidor. O login local antigo foi removido.
 
-## Como usar
+## Estrutura
 
-Abra o arquivo `index.html` no navegador.
+- `cloud/app.js`: rotas HTTP, controle de acesso e transações.
+- `cloud/security.js`: sessões revogáveis, bcrypt, CSRF e limite de tentativas.
+- `cloud/domain.js`: pedidos, preços oficiais, consumo de ingredientes, vendas e entregas.
+- `cloud/history.js`: histórico incremental para recuperação sem duplicar todo o banco a cada pedido.
+- `cloud/schema.sql`: tabelas PostgreSQL; nomes com prefixo `cloud_` não conflitam com o backend anterior.
+- `services/cloud-client.js`: sincronização, confirmação de gravação, rascunho de recuperação e acesso remoto.
+- `app.js`, `index.html`, `styles.css`: módulos e aparência do sistema existente.
+- `api/index.js`: entrada serverless da Vercel.
+- `scripts/build.js`: publica somente arquivos permitidos, sem fontes do servidor ou credenciais.
+- `tests/`: testes de domínio e integração com PostgreSQL real.
 
-Os dados ficam salvos no proprio navegador usando `localStorage`. Para testar rapidamente, clique em **Carregar exemplo** dentro do sistema.
+O backend antigo continua intacto no projeto original. Ele não é iniciado nem publicado por esta versão.
 
-No primeiro acesso, o sistema pede a criacao de um administrador com nome, email e senha alfanumerica. Depois disso, o acesso passa a ser feito por login e senha.
+## Funcionamento em vários dispositivos
 
-## Funcionalidades
+Use o mesmo endereço e as contas criadas pelo administrador. A tela consulta alterações a cada cinco segundos quando não há formulário em edição. Pedidos e gravações conferem a versão no banco; duas gravações conflitantes não se sobrescrevem. O usuário que receber conflito deve atualizar e conferir a operação.
 
-- Cadastro de ingredientes com unidade, estoque inicial e estoque minimo.
-- Login por email e senha, com primeiro usuario administrador.
-- Cadastro, edicao e exclusao de usuarios pelo administrador.
-- Perfil administrador com acesso total e perfil operador para uso diario de vendas/cardapio.
-- Edicao de materias-primas ja cadastradas, evitando duplicidade de nomes no estoque.
-- Reposicao de materia-prima por botao proprio na tela de ingrediente, informando quantidade comprada e valor pago para atualizar investimento e CMV sem duplicar compras ao editar.
-- Exclusao de materias-primas, removendo o item das fichas tecnicas vinculadas.
-- Registro de compras, somando automaticamente ao estoque.
-- Edicao e exclusao de compras antigas com correcao do impacto no estoque.
-- Cadastro de hamburgueres com preco de venda e ficha tecnica de estoque.
-- Edicao completa de hamburgueres, incluindo nome, preco e ficha tecnica.
-- Preenchimento rapido da ficha tecnica com busca de materia-prima, quantidade direta e unidade visivel.
-- Campos de cardapio digital no produto, com nome publico, categoria, descricao, foto, destaque e status ativo.
-- Aba Cardapio para criar pedidos a partir dos produtos ativos, com cliente, telefone, WhatsApp, endereco/mesa, destino, forma de pagamento, taxa, desconto, acrescimo e observacoes.
-- Caixa de pedido rapido com lista compacta de produtos disponiveis, selecao de varios itens em um unico pedido e resumo financeiro.
-- Esteira visual de pedidos do cardapio em colunas: aguardando aceite, em producao, pronto, saindo para entrega/mesa e pagamento confirmado.
-- Tela de cozinha simples com pedidos aguardando aceite, em producao e prontos.
-- Fechamento de caixa diario com totais por forma de pagamento, taxa, desconto, acrescimo, ticket medio e lucro bruto estimado.
-- Historico de movimentacao de estoque para compras e vendas.
-- Alerta sonoro opcional para novo pedido.
-- Aceite de pedido do cardapio gerando venda automatica, baixando estoque e salvando CMV/lucro.
-- Modo de impressao termica para comanda de pedido, com impressao automatica ao criar pedido e botao para reimprimir.
-- Menu principal reorganizado por fluxo operacional: Dashboard, Pedidos, Cardapio, Produtos, Estoque, Financeiro, Relatorios, Usuarios e Configuracoes.
-- Central de estoque agrupando ingredientes, compras e movimentacoes fisicas em subsecoes internas.
-- Central financeira com faturamento, compras, CMV, lucro bruto, ticket medio, valor investido em estoque, entradas, saidas, movimentacoes financeiras e conferencia manual de caixa.
-- Cadastro, edicao e exclusao de despesas operacionais para calcular lucro real.
-- Historico financeiro em timeline com entradas, compras, despesas e ajustes.
-- Conferencia final antes de confirmar pedido, reduzindo erros de atendimento.
-- Alertas de estoque em niveis normal, atencao e critico, com lista de compra sugerida.
-- Relatorios operacionais com graficos simples de produtos vendidos, ingredientes consumidos, lucro por produto e faturamento.
-- Aviso de backup inteligente quando o ultimo backup tiver mais de 3 dias ou nunca tiver sido gerado.
-- Area de configuracoes para carregar exemplos, exportar/importar backup e limpar dados.
-- Exclusao de produtos do cardapio sem apagar vendas antigas do historico.
-- Inclusao de varias materias-primas no mesmo produto, com quantidade usada por unidade vendida.
-- Aba de investimento com custo medio, valor investido por materia-prima, CMV e lucro medio por produto.
-- Registro de vendas, baixando automaticamente todos os ingredientes da ficha tecnica.
-- Edicao do historico de vendas, devolvendo o estoque antigo e aplicando a baixa corrigida.
-- Bloqueio de venda quando o estoque nao cobre a receita.
-- Painel financeiro com faturamento, compras, CMV vendido, lucro bruto, estoque investido e lista de compra sugerida.
-- Backup/restauracao em JSON e exportacao de relatorios CSV.
-- Relatorio por periodo com filtros de hoje, semana, mes e intervalo personalizado.
+Pedidos são comandos processados no servidor. Preços, estoque e vendas são calculados na mesma transação. Um identificador único impede que repetir um envio após falha de conexão duplique a venda. Outros módulos administrativos preservam seu formato completo em um documento JSONB versionado e só podem ser gravados por administradores.
 
-## Arquivos
+Sem internet, o sistema não confirma vendas. Uma tentativa não confirmada fica em um rascunho da sessão deste dispositivo, identificado pelo usuário, com opções para repetir, baixar ou descartar. O rascunho não é uma autenticação nem a base oficial dos dados. Exporte-o antes de limpar os dados do navegador ou encerrar a sessão.
 
-- `index.html`: estrutura da tela.
-- `styles.css`: visual responsivo.
-- `app.js`: regras de estoque, compras, vendas e persistencia local.
-- `backend/`: inicio da API profissional com Express, PostgreSQL, JWT e Socket.IO.
-- `docs/MIGRATION_PLAN.md`: plano gradual para migrar do `localStorage` para cliente-servidor.
+## Segurança e permissões
+
+Administrador: usuários, produtos, estoque, financeiro, backups e recuperação de versões.
+Operador: pedidos, clientes, cozinha e entregas. A API não envia compras, custos das vendas, despesas, caixa e auditoria ao operador.
+
+Sessões: cookie HttpOnly, SameSite=Strict e Secure em HTTPS; expiração de oito horas; hash do identificador no banco; invalidação ao sair, trocar senha, editar ou desativar um usuário. Proteção CSRF e verificação exata de origem nos POSTs. Não há JWT nem login de fallback no navegador.
+
+Senhas: bcrypt com custo 12; mínimo de 10 caracteres, letras e números e máximo de 72 bytes. Cadastro inicial exige chave privada do servidor e o email autorizado. O último administrador ativo não pode ser removido. Tentativas de login e recuperação são limitadas no PostgreSQL e funcionam entre instâncias da Vercel.
+
+O log `cloud_audit` é gerado no servidor. Logs presentes no backup antigo são mantidos como importados, sem serem tratados como prova de autoria do servidor.
+
+## Migração dos dados antigos
+
+1. No navegador/dispositivo em que os dados antigos estão salvos, exporte o backup JSON em Configurações e guarde uma cópia.
+2. Crie o acesso de administrador na nova versão e importe esse JSON em Configurações.
+3. Se a versão nova estiver no mesmo endereço e navegador da antiga, também há o botão **Migrar dados deste navegador**. Ele baixa uma cópia original antes da importação e não apaga o armazenamento antigo.
+4. Confira quantidades, pedidos, financeiro e clientes. Só então passe a operar exclusivamente na versão compartilhada.
+5. Cadastre novamente os funcionários com senhas novas. Os hashes locais antigos não são convertidos em credenciais do servidor.
+
+Dados guardados em outro navegador ou dispositivo não podem ser descobertos automaticamente pelo servidor. Backups são legíveis e contêm dados da operação e de clientes: guarde-os em local controlado.
+
+## Recuperação e backup
+
+Cada alteração confirmada registra alterações inversas para recuperar versões anteriores. O botão **Recuperar versão anterior** mostra versões recentes e mantém a versão substituída também recuperável. A exportação JSON consulta o servidor e requer administrador.
+
+Esse histórico fica no mesmo banco, portanto não substitui um backup independente contra perda da conta ou do banco. Exporte cópias periodicamente e mantenha uma política de backup no provedor. O plano gratuito tem limites próprios de armazenamento e uso; nenhum plano pago foi contratado. Nesta primeira versão, importações e gravações administrativas completas têm limite de 3 MB. Para volumes maiores, será necessária a evolução para consultas paginadas e migração assistida.
+
+## Executar localmente
+
+Node.js 24 e PostgreSQL. Copie `.env.example` para `.env`, informe uma conexão própria, `APP_ORIGIN=http://localhost:8080` e gere uma `SETUP_KEY` com pelo menos 32 caracteres aleatórios.
+
+```sh
+npm ci
+npm run db:migrate
+npm start
+```
+
+A migração só cria as tabelas ausentes. Nunca substitui registros. Credenciais ficam apenas nas variáveis do servidor.
+
+## Vercel
+
+O projeto usa `vercel.json`, uma função Node e o diretório público produzido por `npm run build`. Variáveis: `DATABASE_URL`, `APP_ORIGIN`, `SETUP_KEY` e `SETUP_EMAIL`. Não coloque credenciais em `config/app.config.js`.
+
+O banco Neon remoto exige TLS com verificação de certificado. Recursos de desenvolvimento devem usar um banco separado dos dados reais. Esta entrega foi validada em banco PostgreSQL local isolado antes da publicação.
+
+Recuperação por email é opcional e exige `RESEND_API_KEY` e `EMAIL_FROM` com remetente autorizado. Sem isso, o administrador redefine senhas no módulo Usuários; o sistema não promete enviar emails que não estão configurados.
+
+## Verificações
+
+```sh
+npm run check
+npm run build
+npm test
+```
+
+Para executar também a integração real, defina `TEST_DATABASE_URL` apontando para um PostgreSQL local de testes. O teste cria e remove um schema próprio com nome aleatório. Sem essa variável, a integração é explicitamente marcada como ignorada.
+
+Foram verificados setup, cookies, CSRF, origem, último administrador, permissões, migração, leitura por dois clientes, pedidos com preços do servidor, repetição idempotente, concorrência, estoque insuficiente, auditoria, restauração, troca/recuperação de senha, logout e limitação de tentativas. A interface também foi exercitada no navegador, incluindo pedido real no ambiente de teste e largura de celular.

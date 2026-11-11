@@ -1,8 +1,31 @@
-const STORAGE_KEY = "burgerstock.v1";
-const AUTH_STORAGE_KEY = "burgerstock.auth.v1";
-const SESSION_STORAGE_KEY = "burgerstock.session.v1";
-const PRINT_SETTINGS_KEY = "burgerstock.print.v1";
-const BACKUP_META_KEY = "burgerstock.backup.v1";
+const APP_CONFIG = window.PJOTA_APP_CONFIG || {};
+const STORAGE_KEY = APP_CONFIG.storageKey || "burgerstock.v1";
+const AUTH_STORAGE_KEY = APP_CONFIG.authStorageKey || "burgerstock.auth.v1";
+const SESSION_STORAGE_KEY = APP_CONFIG.sessionStorageKey || "burgerstock.session.v1";
+const PRINT_SETTINGS_KEY = APP_CONFIG.printStorageKey || "burgerstock.print.v1";
+const BACKUP_META_KEY = APP_CONFIG.backupMetaKey || "burgerstock.backup.v1";
+const SOUND_SETTINGS_KEY = APP_CONFIG.soundStorageKey || "burgerstock.sound.v1";
+
+const storageRepository = window.PJotaStorageRepository || {
+  get(key) {
+    return localStorage.getItem(key);
+  },
+  set(key, value) {
+    localStorage.setItem(key, value);
+  },
+  remove(key) {
+    localStorage.removeItem(key);
+  },
+  getSession(key) {
+    return sessionStorage.getItem(key);
+  },
+  setSession(key, value) {
+    sessionStorage.setItem(key, value);
+  },
+  removeSession(key) {
+    sessionStorage.removeItem(key);
+  },
+};
 
 const defaultState = {
   ingredients: [],
@@ -12,6 +35,13 @@ const defaultState = {
   orders: [],
   movements: [],
   expenses: [],
+  cashClosings: [],
+  cashAdjustments: [],
+  auditLogs: [],
+  deliveries: [],
+  stockAdjustments: [],
+  settings: {},
+  customers: [],
 };
 
 const defaultAuthState = {
@@ -29,6 +59,10 @@ let menuFilter = {
   status: "all",
 };
 
+let customerFilter = {
+  query: "",
+};
+
 let printSettings = loadPrintSettings();
 let soundSettings = loadSoundSettings();
 let quickOrderDraft = {
@@ -39,7 +73,7 @@ let quickOrderDraft = {
     customerWhatsapp: true,
     destination: "delivery",
     address: "",
-    paymentMethod: "not_informed",
+    paymentMethod: "pix",
     deliveryFee: 0,
     discount: 0,
     surcharge: 0,
@@ -263,52 +297,17 @@ const legacyOrderStatusMap = {
 
 const orderBoardStatuses = ["awaiting_acceptance", "in_production", "ready", "dispatching", "payment_confirmed", "canceled"];
 
-function normalizeAuthState(input) {
-  const normalized = { ...clone(defaultAuthState), ...(input || {}) };
-  normalized.users = Array.isArray(normalized.users) ? normalized.users : [];
-  normalized.users = normalized.users
-    .map((user) => ({
-      id: String(user.id || createId()),
-      name: String(user.name || "Usuario"),
-      email: String(user.email || "").trim().toLowerCase(),
-      role: user.role === "admin" ? "admin" : "operator",
-      salt: String(user.salt || ""),
-      passwordHash: String(user.passwordHash || ""),
-      createdAt: user.createdAt || new Date().toISOString(),
-      updatedAt: user.updatedAt || "",
-    }))
-    .filter((user) => user.email && user.salt && user.passwordHash);
-  return normalized;
-}
 
-function loadAuthState() {
-  const raw = localStorage.getItem(AUTH_STORAGE_KEY);
-  if (!raw) return clone(defaultAuthState);
 
-  try {
-    return normalizeAuthState(JSON.parse(raw));
-  } catch {
-    return clone(defaultAuthState);
-  }
-}
+function loadAuthState(){ return {users:[]}; }
 
-function saveAuthState() {
-  authState = normalizeAuthState(authState);
-  localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authState));
-}
 
-function loadSession() {
-  try {
-    const raw = sessionStorage.getItem(SESSION_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
+
+function loadSession(){ return null; }
 
 function loadPrintSettings() {
   try {
-    const raw = localStorage.getItem(PRINT_SETTINGS_KEY);
+    const raw = storageRepository.get(PRINT_SETTINGS_KEY);
     return raw ? { autoPrintOrders: true, ...JSON.parse(raw) } : { autoPrintOrders: true };
   } catch {
     return { autoPrintOrders: true };
@@ -316,12 +315,12 @@ function loadPrintSettings() {
 }
 
 function savePrintSettings() {
-  localStorage.setItem(PRINT_SETTINGS_KEY, JSON.stringify(printSettings));
+  storageRepository.set(PRINT_SETTINGS_KEY, JSON.stringify(printSettings));
 }
 
 function loadSoundSettings() {
   try {
-    const raw = localStorage.getItem("burgerstock.sound.v1");
+    const raw = storageRepository.get(SOUND_SETTINGS_KEY);
     return raw ? { enabled: true, ...JSON.parse(raw) } : { enabled: true };
   } catch {
     return { enabled: true };
@@ -329,18 +328,12 @@ function loadSoundSettings() {
 }
 
 function saveSoundSettings() {
-  localStorage.setItem("burgerstock.sound.v1", JSON.stringify(soundSettings));
+  storageRepository.set(SOUND_SETTINGS_KEY, JSON.stringify(soundSettings));
 }
 
-function saveSession(user) {
-  currentSession = { userId: user.id, email: user.email, startedAt: new Date().toISOString() };
-  sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(currentSession));
-}
+function saveSession(user){ currentSession={userId:user.id}; }
 
-function clearSession() {
-  currentSession = null;
-  sessionStorage.removeItem(SESSION_STORAGE_KEY);
-}
+function clearSession(){ currentSession=null; authState={users:[]}; state=clone(defaultState); cloud.confirmed=null; }
 
 function getCurrentUser() {
   if (!currentSession?.userId) return null;
@@ -355,49 +348,15 @@ function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
-function validatePassword(value) {
-  const password = String(value || "");
-  if (!/^[A-Za-z0-9]{8,}$/.test(password)) {
-    return "A senha precisa ter pelo menos 8 caracteres e usar apenas letras e numeros.";
-  }
-  if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
-    return "A senha precisa misturar letras e numeros.";
-  }
-  return "";
-}
+function validatePassword(value){ return typeof value==='string' && value.length>=10 && value.length<=72 && /[A-Za-z]/.test(value) && /[0-9]/.test(value) ? '' : 'Use de 10 a 72 caracteres, incluindo letras e números.'; }
 
-function createSalt() {
-  const bytes = new Uint8Array(16);
-  if (globalThis.crypto?.getRandomValues) {
-    crypto.getRandomValues(bytes);
-    return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-  }
-  return `${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`;
-}
 
-function fallbackHash(text) {
-  let hash = 2166136261;
-  for (let index = 0; index < text.length; index += 1) {
-    hash ^= text.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0).toString(16).padStart(8, "0");
-}
 
-async function hashPassword(password, salt) {
-  const text = `${salt}:${password}`;
-  if (!globalThis.crypto?.subtle) return fallbackHash(text);
-  const buffer = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return [...new Uint8Array(buffer)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-}
 
-async function buildPasswordRecord(password) {
-  const salt = createSalt();
-  return {
-    salt,
-    passwordHash: await hashPassword(password, salt),
-  };
-}
+
+
+
+
 
 function findUser(id) {
   return authState.users.find((user) => user.id === id);
@@ -422,6 +381,13 @@ function normalizeState(input) {
   normalized.orders = Array.isArray(normalized.orders) ? normalized.orders : [];
   normalized.movements = Array.isArray(normalized.movements) ? normalized.movements : [];
   normalized.expenses = Array.isArray(normalized.expenses) ? normalized.expenses : [];
+  normalized.cashClosings = Array.isArray(normalized.cashClosings) ? normalized.cashClosings : [];
+  normalized.cashAdjustments = Array.isArray(normalized.cashAdjustments) ? normalized.cashAdjustments : [];
+  normalized.auditLogs = Array.isArray(normalized.auditLogs) ? normalized.auditLogs : [];
+  normalized.deliveries = Array.isArray(normalized.deliveries) ? normalized.deliveries : [];
+  normalized.stockAdjustments = Array.isArray(normalized.stockAdjustments) ? normalized.stockAdjustments : [];
+  normalized.settings = normalized.settings && typeof normalized.settings === "object" ? normalized.settings : {};
+  normalized.customers = Array.isArray(normalized.customers) ? normalized.customers : [];
 
   normalized.ingredients = normalized.ingredients.map((ingredient) => ({
     id: String(ingredient.id || createId()),
@@ -467,6 +433,15 @@ function normalizeState(input) {
   normalized.orders = normalized.orders.map((order) => normalizeOrder(order));
   normalized.movements = normalized.movements.map((movement) => normalizeMovement(movement));
   normalized.expenses = normalized.expenses.map((expense) => normalizeExpense(expense));
+  normalized.cashClosings = normalized.cashClosings.map((closing) => normalizeCashClosing(closing));
+  normalized.cashAdjustments = normalized.cashAdjustments.map((adjustment) => normalizeCashAdjustment(adjustment));
+  normalized.auditLogs = normalized.auditLogs.map((log) => normalizeAuditLog(log));
+  normalized.deliveries = normalized.deliveries.map((delivery) => normalizeDelivery(delivery));
+  normalized.stockAdjustments = normalized.stockAdjustments.map((adjustment) => normalizeStockAdjustment(adjustment));
+  normalized.settings = normalizeSettings(normalized.settings);
+  normalized.customers = normalized.customers
+    .map((customer) => window.PJotaCustomerModel.normalizeCustomer(customer, createId))
+    .filter((customer) => customer.phone);
   return normalized;
 }
 
@@ -512,6 +487,7 @@ function normalizeOrder(order) {
     items,
     customerName: String(order.customerName || ""),
     customerPhone: String(order.customerPhone || ""),
+    customerId: String(order.customerId || ""),
     customerWhatsapp: Boolean(order.customerWhatsapp),
     address: String(order.address || ""),
     paymentMethod: String(order.paymentMethod || "not_informed"),
@@ -532,8 +508,17 @@ function normalizeOrder(order) {
     paidAt: order.paidAt || "",
     statusUpdatedAt: order.statusUpdatedAt || order.confirmedAt || order.date || new Date().toISOString(),
     confirmedAt: order.confirmedAt || "",
+    inventoryDeductedAt: order.inventoryDeductedAt || "",
     saleId: order.saleId || "",
     saleIds: Array.isArray(order.saleIds) ? order.saleIds : order.saleId ? [order.saleId] : [],
+    cancelStage: String(order.cancelStage || ""),
+    cancelReason: String(order.cancelReason || ""),
+    cancelNote: String(order.cancelNote || ""),
+    canceledAt: order.canceledAt || "",
+    deliveryPerson: String(order.deliveryPerson || ""),
+    deliveryFeePaid: toNumber(order.deliveryFeePaid),
+    deliveryStartedAt: order.deliveryStartedAt || "",
+    deliveryFinishedAt: order.deliveryFinishedAt || "",
   };
 }
 
@@ -559,6 +544,87 @@ function normalizeExpense(expense) {
     amount: toNumber(expense.amount),
     date: expense.date || new Date().toISOString(),
     updatedAt: expense.updatedAt || "",
+  };
+}
+
+function normalizeCashClosing(closing) {
+  return {
+    id: String(closing.id || createId()),
+    openedAt: closing.openedAt || new Date().toISOString(),
+    closedAt: closing.closedAt || "",
+    responsible: String(closing.responsible || ""),
+    openingAmount: toNumber(closing.openingAmount),
+    cashExpected: toNumber(closing.cashExpected),
+    pixExpected: toNumber(closing.pixExpected),
+    cardExpected: toNumber(closing.cardExpected),
+    otherExpected: toNumber(closing.otherExpected),
+    totalExpected: toNumber(closing.totalExpected),
+    totalCounted: toNumber(closing.totalCounted),
+    difference: toNumber(closing.difference),
+    notes: String(closing.notes || ""),
+    status: closing.status === "closed" ? "closed" : "open",
+  };
+}
+
+function normalizeCashAdjustment(adjustment) {
+  return {
+    id: String(adjustment.id || createId()),
+    cashId: String(adjustment.cashId || ""),
+    type: adjustment.type === "sangria" ? "sangria" : "suprimento",
+    amount: toNumber(adjustment.amount),
+    note: String(adjustment.note || ""),
+    responsible: String(adjustment.responsible || ""),
+    date: adjustment.date || new Date().toISOString(),
+  };
+}
+
+function normalizeAuditLog(log) {
+  return {
+    id: String(log.id || createId()),
+    date: log.date || new Date().toISOString(),
+    user: String(log.user || "Sistema"),
+    action: String(log.action || "Alteracao"),
+    detail: String(log.detail || ""),
+  };
+}
+
+function normalizeDelivery(delivery) {
+  return {
+    id: String(delivery.id || createId()),
+    orderId: String(delivery.orderId || ""),
+    orderNumber: String(delivery.orderNumber || ""),
+    customerName: String(delivery.customerName || ""),
+    motoboy: String(delivery.motoboy || ""),
+    fee: toNumber(delivery.fee),
+    startedAt: delivery.startedAt || "",
+    deliveredAt: delivery.deliveredAt || "",
+  };
+}
+
+function normalizeStockAdjustment(adjustment) {
+  return {
+    id: String(adjustment.id || createId()),
+    ingredientId: String(adjustment.ingredientId || ""),
+    ingredientName: String(adjustment.ingredientName || ""),
+    unit: String(adjustment.unit || ""),
+    type: String(adjustment.type || "ajuste"),
+    quantity: toNumber(adjustment.quantity),
+    reason: String(adjustment.reason || ""),
+    date: adjustment.date || new Date().toISOString(),
+    user: String(adjustment.user || "Sistema"),
+  };
+}
+
+function normalizeSettings(settings = {}) {
+  const defaults = APP_CONFIG.defaultSettings || {};
+  return {
+    companyName: String(settings.companyName || defaults.companyName || "P'Jota Buguer"),
+    address: String(settings.address || defaults.address || ""),
+    phone: String(settings.phone || defaults.phone || ""),
+    whatsapp: String(settings.whatsapp || defaults.whatsapp || ""),
+    defaultDeliveryFee: toNumber(settings.defaultDeliveryFee || defaults.defaultDeliveryFee),
+    printMessage: String(settings.printMessage || defaults.printMessage || "Obrigado pela preferencia!"),
+    logoUrl: String(settings.logoUrl || defaults.logoUrl || ""),
   };
 }
 
@@ -595,20 +661,11 @@ function normalizeSale(sale) {
   };
 }
 
-function loadState() {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) return clone(defaultState);
+function loadState(){ return clone(defaultState); }
 
-  try {
-    return normalizeState(JSON.parse(raw));
-  } catch {
-    return clone(defaultState);
-  }
-}
-
-function saveState() {
-  state = normalizeState(state);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+async function saveState(){
+  if(!isAdmin()) throw new Error('Apenas administradores podem editar estes dados.');
+  await cloudMutate('state.save',normalizeState(state));
 }
 
 function formatQuantity(value, unit) {
@@ -637,6 +694,55 @@ function findOrder(id) {
 
 function findExpense(id) {
   return state.expenses.find((item) => item.id === id);
+}
+
+function findCustomer(id) {
+  return state.customers.find((item) => item.id === id);
+}
+
+function findCustomerByPhone(phone) {
+  return window.PJotaCustomerService.findByPhone(state.customers, phone);
+}
+
+function applyCustomerToQuickOrder(customer) {
+  if (!customer) return;
+  syncQuickOrderFormFromDom();
+  quickOrderDraft.form.customerName = customer.name;
+  quickOrderDraft.form.customerPhone = customer.phone;
+  quickOrderDraft.form.customerWhatsapp = customer.whatsapp;
+  if (quickOrderDraft.form.destination === "delivery" && customer.address) {
+    quickOrderDraft.form.address = customer.address;
+  }
+  renderDigitalMenu();
+}
+
+function updateQuickOrderFromPhone() {
+  const customer = findCustomerByPhone($("#quickPhone")?.value);
+  if (customer) applyCustomerToQuickOrder(customer);
+}
+
+function getCurrentUserName() {
+  const user = getCurrentUser();
+  return user ? `${user.name} (${user.role === "admin" ? "admin" : "operador"})` : "Sistema";
+}
+
+function addAuditLog(action, detail = "") {
+  state.auditLogs.push({
+    id: createId(),
+    date: new Date().toISOString(),
+    user: getCurrentUserName(),
+    action,
+    detail,
+  });
+}
+
+function getOpenCash() {
+  return state.cashClosings.find((cash) => cash.status === "open");
+}
+
+function getStoreSettings() {
+  state.settings = normalizeSettings(state.settings);
+  return state.settings;
 }
 
 function getOrderStatus(status) {
@@ -695,20 +801,28 @@ function calculateOrderItemsTotals(items, extras = {}) {
 }
 
 function canFulfillItems(items) {
-  const required = new Map();
+  const calculation = window.PJotaOrderInventoryService.calculateRequirements(items, state.products);
+  return calculation.ok && window.PJotaOrderInventoryService.validateAvailability(calculation.requirements, state.ingredients).ok;
+}
 
-  for (const item of items) {
-    const product = findProduct(item.productId);
-    if (!product || !product.recipe.length) return false;
-    product.recipe.forEach((line) => {
-      required.set(line.ingredientId, (required.get(line.ingredientId) || 0) + line.quantity * item.quantity);
-    });
-  }
+function deductOrderInventory(order, items) {
+  const result = window.PJotaOrderInventoryService.deductOnce(order, items, state.products, state.ingredients);
+  if (!result.ok) return result;
+  if (result.alreadyDeducted) return result;
 
-  return [...required.entries()].every(([ingredientId, quantity]) => {
-    const ingredient = findIngredient(ingredientId);
-    return ingredient && ingredient.stock >= quantity;
+  result.requirements.forEach((requirement) => {
+    const ingredient = findIngredient(requirement.ingredientId);
+    if (ingredient) {
+      recordMovement({
+        type: "venda",
+        ingredient,
+        quantity: requirement.quantity,
+        source: "Pedido",
+        sourceId: order.id,
+      });
+    }
   });
+  return result;
 }
 
 function recordMovement({ type, ingredient, quantity, source, sourceId }) {
@@ -725,87 +839,221 @@ function recordMovement({ type, ingredient, quantity, source, sourceId }) {
   });
 }
 
-function getReceiptHtml(order) {
-  const items = getOrderItems(order);
-  const itemLines = items
-    .map((item) => `<tr><td>${item.quantity}x ${escapeHtml(item.productName)}</td><td>${currency.format(item.total)}</td></tr>`)
-    .join("");
+function wrapReceiptText(text, width = 28) {
+  const words = String(text || "").split(/\s+/).filter(Boolean);
+  const lines = [];
+  let line = "";
 
+  words.forEach((word) => {
+    if (!line) {
+      line = word;
+      return;
+    }
+    if (`${line} ${word}`.length <= width) {
+      line = `${line} ${word}`;
+    } else {
+      lines.push(line);
+      line = word;
+    }
+  });
+
+  if (line) lines.push(line);
+  return lines.length ? lines : [""];
+}
+
+function receiptLine(label, value, width = 28) {
+  const left = String(label || "");
+  const right = String(value || "");
+  const spaces = Math.max(1, width - left.length - right.length);
+  if (left.length + right.length + spaces <= width) return `${left}${" ".repeat(spaces)}${right}`;
+  return `${left}\n${right}`;
+}
+
+function receiptBlock(label, text, width = 28) {
+  return [`${label}:`, ...wrapReceiptText(text || "Nao informado", width)].join("\n");
+}
+
+function receiptSeparator(width = 28) {
+  return "-".repeat(width);
+}
+
+function getReceiptText(order) {
+  const settings = getStoreSettings();
+  const lines = [
+    settings.companyName.toUpperCase(),
+    "COMPROVANTE CLIENTE",
+    receiptSeparator(),
+    receiptLine("Pedido", `#${getOrderNumber(order)}`),
+    receiptLine("Data", dateFormat.format(new Date(order.date))),
+    receiptLine("Destino", getOrderDestinationLabel(order.destination)),
+    receiptLine("Status", getOrderStatusLabel(order)),
+    receiptLine("Pagto", getPaymentMethodLabel(order.paymentMethod)),
+    receiptSeparator(),
+    receiptBlock("Cliente", order.customerName),
+  ];
+
+  if (order.customerPhone) lines.push(receiptBlock("Telefone", `${order.customerPhone}${order.customerWhatsapp ? " / WhatsApp" : ""}`));
+  if (order.address) lines.push(receiptBlock("Local", order.address));
+
+  lines.push(receiptSeparator(), "ITENS");
+  getOrderItems(order).forEach((item) => {
+    lines.push(...wrapReceiptText(`${item.quantity}x ${item.productName}`, 28));
+    lines.push(receiptLine("Valor", currency.format(item.total)));
+  });
+
+  if (order.deliveryFee > 0) lines.push(receiptLine("Taxa entrega", currency.format(order.deliveryFee)));
+  if (order.surcharge > 0) lines.push(receiptLine("Acrescimo", currency.format(order.surcharge)));
+  if (order.discount > 0) lines.push(receiptLine("Desconto", `-${currency.format(order.discount)}`));
+
+  lines.push(
+    receiptSeparator(),
+    receiptBlock("Obs", order.note || "Sem observacao"),
+    receiptSeparator(),
+    receiptLine("TOTAL", currency.format(order.total)),
+    receiptSeparator(),
+    ...wrapReceiptText(settings.printMessage, 28),
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+  );
+
+  return lines.join("\n");
+}
+
+function getKitchenReceiptText(order) {
+  const settings = getStoreSettings();
+  const lines = [
+    settings.companyName.toUpperCase(),
+    `COZINHA #${getOrderNumber(order)}`,
+    receiptSeparator(),
+    receiptBlock("Cliente", order.customerName),
+    receiptLine("Destino", getOrderDestinationLabel(order.destination)),
+  ];
+
+  if (order.address) lines.push(receiptBlock("Local", order.address));
+
+  lines.push(receiptSeparator(), "PRODUTOS");
+  getOrderItems(order).forEach((item) => {
+    lines.push(...wrapReceiptText(`${item.quantity}x ${item.productName}${item.note ? ` - ${item.note}` : ""}`, 28));
+  });
+
+  lines.push(
+    receiptSeparator(),
+    receiptBlock("Obs", order.note || "Sem observacao"),
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+  );
+
+  return lines.join("\n");
+}
+
+function getReceiptHtml(order) {
   return `<!doctype html>
     <html lang="pt-BR">
       <head>
         <meta charset="UTF-8" />
         <title>Pedido #${getOrderNumber(order)}</title>
         <style>
-          @page { size: 80mm auto; margin: 4mm; }
+          @page { size: 58mm auto; margin: 0; }
           * { box-sizing: border-box; }
           body {
-            width: 72mm;
+            width: 38mm;
             margin: 0;
+            padding: 0 0 26mm 0;
             color: #000;
             font-family: ui-monospace, "Courier New", monospace;
-            font-size: 12px;
+            font-size: 8px;
+            line-height: 1.15;
           }
-          h1, h2, p { margin: 0; }
-          h1 { font-size: 18px; text-align: center; text-transform: uppercase; }
-          h2 { font-size: 14px; margin-top: 8px; }
-          .center { text-align: center; }
-          .line { border-top: 1px dashed #000; margin: 8px 0; }
-          .row { display: flex; justify-content: space-between; gap: 8px; }
-          .big { font-size: 16px; font-weight: 800; }
-          table { width: 100%; border-collapse: collapse; margin-top: 4px; }
-          td { padding: 2px 0; vertical-align: top; }
-          td:last-child { text-align: right; white-space: nowrap; }
-          .note { white-space: pre-wrap; }
+          pre {
+            margin: 0;
+            white-space: pre-wrap;
+            overflow-wrap: break-word;
+            word-break: normal;
+            font: inherit;
+          }
+          .feed {
+            height: 24mm;
+          }
         </style>
       </head>
       <body>
-        <h1>P'JOTABUGUER</h1>
-        <p class="center">COMANDA DE PEDIDO</p>
-        <div class="line"></div>
-        <div class="row"><span>Pedido</span><strong>#${getOrderNumber(order)}</strong></div>
-        <div class="row"><span>Data</span><strong>${dateFormat.format(new Date(order.date))}</strong></div>
-        <div class="row"><span>Destino</span><strong>${getOrderDestinationLabel(order.destination)}</strong></div>
-        <div class="row"><span>Status</span><strong>${getOrderStatusLabel(order)}</strong></div>
-        <div class="row"><span>Pagamento</span><strong>${getPaymentMethodLabel(order.paymentMethod)}</strong></div>
-        <div class="line"></div>
-        <p>Cliente</p>
-        <p class="big">${escapeHtml(order.customerName || "Nao informado")}</p>
-        ${order.customerPhone ? `<p>Telefone: ${escapeHtml(order.customerPhone)}${order.customerWhatsapp ? " / WhatsApp" : ""}</p>` : ""}
-        ${order.address ? `<p>Endereco: ${escapeHtml(order.address)}</p>` : ""}
-        <div class="line"></div>
-        <table>
-          ${itemLines}
-          ${order.deliveryFee > 0 ? `<tr><td>Taxa de entrega</td><td>${currency.format(order.deliveryFee)}</td></tr>` : ""}
-          ${order.surcharge > 0 ? `<tr><td>Acrescimo</td><td>${currency.format(order.surcharge)}</td></tr>` : ""}
-          ${order.discount > 0 ? `<tr><td>Desconto</td><td>-${currency.format(order.discount)}</td></tr>` : ""}
-        </table>
-        <div class="line"></div>
-        <p>Observacao</p>
-        <p class="note">${escapeHtml(order.note || "Sem observacao")}</p>
-        <div class="line"></div>
-        <div class="row big"><span>Total</span><span>${currency.format(order.total)}</span></div>
-        <div class="line"></div>
-        <p class="center">Impresso automaticamente pelo sistema</p>
+        <pre>${escapeHtml(getReceiptText(order))}</pre>
+        <div class="feed"></div>
       </body>
     </html>`;
 }
 
-function printOrderReceipt(order) {
+function getKitchenReceiptHtml(order) {
+  return `<!doctype html>
+    <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8" />
+        <title>Comanda #${getOrderNumber(order)}</title>
+        <style>
+          @page { size: 58mm auto; margin: 0; }
+          body {
+            width: 38mm;
+            margin: 0;
+            padding: 0 0 26mm 0;
+            color: #000;
+            font-family: ui-monospace, "Courier New", monospace;
+            font-size: 8.5px;
+            line-height: 1.15;
+          }
+          pre {
+            margin: 0;
+            white-space: pre-wrap;
+            overflow-wrap: break-word;
+            word-break: normal;
+            font: inherit;
+          }
+          .feed {
+            height: 24mm;
+          }
+        </style>
+      </head>
+      <body>
+        <pre>${escapeHtml(getKitchenReceiptText(order))}</pre>
+        <div class="feed"></div>
+      </body>
+    </html>`;
+}
+
+function printHtml(html, blockedMessage) {
   const printWindow = window.open("", "_blank", "width=380,height=640");
   if (!printWindow) {
-    alert("O navegador bloqueou a janela de impressao. Libere pop-ups para imprimir automaticamente.");
+    alert(blockedMessage);
     return;
   }
 
   printWindow.document.open();
-  printWindow.document.write(getReceiptHtml(order));
+  printWindow.document.write(html);
   printWindow.document.close();
   printWindow.focus();
   printWindow.addEventListener("load", () => {
     printWindow.print();
     printWindow.close();
   });
+}
+
+function printOrderReceipt(order) {
+  printHtml(getReceiptHtml(order), "O navegador bloqueou a janela de impressao. Libere pop-ups para imprimir automaticamente.");
+}
+
+function printKitchenCommand(order) {
+  printHtml(getKitchenReceiptHtml(order), "O navegador bloqueou a janela de impressao da cozinha. Libere pop-ups para imprimir automaticamente.");
 }
 
 function playNewOrderSound() {
@@ -832,7 +1080,7 @@ function ingredientOptions(selectedId = "") {
   return state.ingredients
     .map(
       (item) =>
-        `<option value="${item.id}" ${item.id === selectedId ? "selected" : ""}>${escapeHtml(item.name)} (${escapeHtml(item.unit)})</option>`,
+        `<option value="${escapeHtml(item.id)}" ${item.id === selectedId ? "selected" : ""}>${escapeHtml(item.name)} (${escapeHtml(item.unit)})</option>`,
     )
     .join("");
 }
@@ -841,7 +1089,7 @@ function productOptions(selectedId = "") {
   return state.products
     .map(
       (product) =>
-        `<option value="${product.id}" ${product.id === selectedId ? "selected" : ""}>${escapeHtml(product.name)}</option>`,
+        `<option value="${escapeHtml(product.id)}" ${product.id === selectedId ? "selected" : ""}>${escapeHtml(product.name)}</option>`,
     )
     .join("");
 }
@@ -1005,13 +1253,14 @@ function updatePurchase(purchase, ingredient, quantity, cost) {
   }
 
   Object.assign(purchase, updated);
+  addAuditLog("Compra editada", `${ingredient.name} - ${formatQuantity(quantity, ingredient.unit)} - ${currency.format(cost)}`);
   return true;
 }
 
-function deletePurchase(id) {
+async function deletePurchase(id) {
   const purchase = findPurchase(id);
   if (!purchase) return;
-  if (!confirm(`Deseja excluir a compra de "${purchase.ingredientName}"? O estoque sera reduzido.`)) return;
+  if (!await cloudConfirm(`Deseja excluir a compra de "${purchase.ingredientName}"? O estoque sera reduzido.`)) return;
   if (!removePurchaseFromStock(purchase)) {
     alert("Nao e possivel excluir essa compra porque o estoque ficaria negativo.");
     return;
@@ -1021,8 +1270,9 @@ function deletePurchase(id) {
     recordMovement({ type: "cancelamento", ingredient, quantity: purchase.quantity, source: "Exclusao de compra", sourceId: purchase.id });
   }
   state.purchases = state.purchases.filter((item) => item.id !== id);
+  addAuditLog("Compra removida", `${purchase.ingredientName} - ${currency.format(purchase.cost)}`);
   if ($("#purchaseId").value === id) resetPurchaseForm();
-  saveState();
+  await saveState();
   renderAll();
 }
 
@@ -1070,27 +1320,30 @@ function buildSale(product, quantity, price, extra = {}) {
 }
 
 function createSaleFromProduct(product, quantity, price, extra = {}) {
-  if (!canSell(product, quantity)) return null;
+  if (!extra.skipStockDeduction && !canSell(product, quantity)) return null;
   const sale = buildSale(product, quantity, price, extra);
-  deductProductStock(product, quantity);
-  product.recipe.forEach((line) => {
-    const ingredient = findIngredient(line.ingredientId);
-    if (ingredient) {
-      recordMovement({
-        type: "venda",
-        ingredient,
-        quantity: line.quantity * quantity,
-        source: extra.orderId ? "Pedido" : "Venda",
-        sourceId: extra.orderId || sale.id,
-      });
-    }
-  });
+  if (!extra.skipStockDeduction) {
+    deductProductStock(product, quantity);
+    product.recipe.forEach((line) => {
+      const ingredient = findIngredient(line.ingredientId);
+      if (ingredient) {
+        recordMovement({
+          type: "venda",
+          ingredient,
+          quantity: line.quantity * quantity,
+          source: extra.orderId ? "Pedido" : "Venda",
+          sourceId: extra.orderId || sale.id,
+        });
+      }
+    });
+  }
   state.sales.push(sale);
+  addAuditLog("Venda registrada", `${product.name} - ${quantity} un - ${currency.format(sale.total)}`);
   return sale;
 }
 
 function canSell(product, quantity) {
-  if (!product.recipe.length) return false;
+  if (!product || !Array.isArray(product.recipe) || !product.recipe.length || !Number.isInteger(Number(quantity)) || Number(quantity) <= 0) return false;
 
   return product.recipe.every((line) => {
     const ingredient = findIngredient(line.ingredientId);
@@ -1139,7 +1392,11 @@ function isInPeriod(dateValue) {
 }
 
 function getFilteredSales() {
-  return state.sales.filter((sale) => isInPeriod(sale.date));
+  return state.sales.filter((sale) => {
+    if (!isInPeriod(sale.date)) return false;
+    const order = sale.orderId ? findOrder(sale.orderId) : null;
+    return order?.status !== "canceled";
+  });
 }
 
 function getFilteredPurchases() {
@@ -1195,12 +1452,16 @@ function renderAll() {
   renderProducts();
   renderDigitalMenu();
   renderMenuCatalog();
+  renderCustomers();
   renderKitchen();
+  renderDeliveries();
   renderCashClosing();
   renderMovements();
   renderFinance();
   renderInvestment();
   renderReports();
+  renderSettings();
+  renderAudit();
   renderBackupWarning();
   renderPurchases();
   renderSales();
@@ -1211,7 +1472,7 @@ function renderAll() {
 
 function renderAuthGate() {
   const currentUser = getCurrentUser();
-  const hasUsers = authState.users.length > 0;
+  const hasUsers = !cloud.setup;
   const authenticated = Boolean(currentUser);
 
   $("#authScreen").classList.toggle("hidden", authenticated);
@@ -1227,7 +1488,7 @@ function renderAuthGate() {
   $("#currentUserBadge").textContent = `${currentUser.name} (${currentUser.role === "admin" ? "admin" : "operador"})`;
   const activePanel = $(".tab-panel.active");
   const activeButton = activePanel ? $(`.tab-button[data-tab="${activePanel.id}"]`) : null;
-  if (!activePanel || activeButton?.classList.contains("hidden")) activateTab("dashboard");
+  if (!activePanel || activeButton?.classList.contains("hidden")) activateTab(isAdmin() ? "dashboard" : "menu");
 }
 
 function renderUsers() {
@@ -1242,8 +1503,8 @@ function renderUsers() {
           <td>${user.role === "admin" ? "Administrador" : "Operador"}</td>
           <td>
             <div class="row-actions">
-              <button class="ghost-button edit-user" type="button" data-id="${user.id}">Editar</button>
-              <button class="danger-button delete-user" type="button" data-id="${user.id}">Excluir</button>
+              <button class="ghost-button edit-user" type="button" data-id="${escapeHtml(user.id)}">Editar</button>
+              <button class="danger-button delete-user" type="button" data-id="${escapeHtml(user.id)}">Excluir</button>
             </div>
           </td>
         </tr>`,
@@ -1276,14 +1537,24 @@ function renderSelects() {
 }
 
 function renderDashboard() {
-  const metrics = calculatePeriodMetrics();
+  const today = new Date().toISOString().slice(0, 10);
+  const todaySales = state.sales.filter((sale) => sale.date.slice(0, 10) === today);
+  const todayOrders = state.orders.filter((order) => order.date.slice(0, 10) === today && order.status !== "canceled");
+  const todayExpenses = state.expenses.filter((expense) => expense.date.slice(0, 10) === today);
+  const todayRevenue = todaySales.reduce((sum, sale) => sum + sale.total, 0);
+  const todayCmv = todaySales.reduce((sum, sale) => sum + getSaleCmv(sale), 0);
+  const todayExpenseTotal = todayExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+  const openOrders = state.orders.filter((order) => ["awaiting_acceptance", "in_production", "ready", "dispatching"].includes(order.status));
+  const topProduct = Object.entries(sumBy(todaySales, (sale) => sale.productName, (sale) => sale.quantity))
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value)[0];
   const criticalItems = getCriticalItems();
 
-  $("#statRevenue").textContent = currency.format(metrics.revenue);
-  $("#statCosts").textContent = currency.format(metrics.purchasesTotal);
-  $("#statSoldCmv").textContent = currency.format(metrics.soldCmv);
-  $("#statProfit").textContent = currency.format(metrics.grossProfit);
-  $("#statDashboardStockValue").textContent = currency.format(getStockValue());
+  $("#statRevenue").textContent = currency.format(todayRevenue);
+  $("#statOpenOrders").textContent = openOrders.length.toLocaleString("pt-BR");
+  $("#statDayProfit").textContent = currency.format(todayRevenue - todayCmv - todayExpenseTotal);
+  $("#statCriticalCount").textContent = criticalItems.length.toLocaleString("pt-BR");
+  $("#statTopProduct").textContent = topProduct ? topProduct.label : "-";
 
   $("#alertsTable").innerHTML =
     criticalItems
@@ -1298,17 +1569,12 @@ function renderDashboard() {
       )
       .join("") || `<tr><td colspan="5" class="empty">Nenhum ingrediente abaixo do minimo.</td></tr>`;
 
-  $("#periodSummaryTable").innerHTML = `
-    <tr><th>Quantidade vendida</th><td>${metrics.salesQuantity.toLocaleString("pt-BR")}</td></tr>
-    <tr><th>Numero de vendas</th><td>${metrics.sales.length.toLocaleString("pt-BR")}</td></tr>
-    <tr><th>Faturamento</th><td>${currency.format(metrics.revenue)}</td></tr>
-    <tr><th>Compras realizadas</th><td>${currency.format(metrics.purchasesTotal)}</td></tr>
-    <tr><th>CMV vendido</th><td>${currency.format(metrics.soldCmv)}</td></tr>
-    <tr><th>Lucro bruto</th><td>${currency.format(metrics.grossProfit)}</td></tr>
-    <tr><th>Despesas operacionais</th><td>${currency.format(metrics.expensesTotal)}</td></tr>
-    <tr><th>Lucro real estimado</th><td>${currency.format(metrics.realProfit)}</td></tr>
-    <tr><th>Itens criticos</th><td>${criticalItems.length.toLocaleString("pt-BR")}</td></tr>
-  `;
+  $("#periodSummaryTable").innerHTML =
+    todayOrders
+      .slice(-8)
+      .reverse()
+      .map((order) => `<tr><th>#${getOrderNumber(order)} - ${escapeHtml(order.customerName || "Cliente")}</th><td>${getOrderStatusLabel(order)}</td></tr>`)
+      .join("") || `<tr><td class="empty">Nenhum pedido hoje.</td></tr>`;
 }
 
 function renderInventory() {
@@ -1323,9 +1589,9 @@ function renderInventory() {
           <td><span class="badge ${status.className}">${status.label}</span></td>
           <td>
             <div class="row-actions">
-              <button class="ghost-button edit-ingredient" type="button" data-id="${item.id}">Editar</button>
-              <button class="ghost-button restock-ingredient" type="button" data-id="${item.id}">Repor</button>
-              <button class="danger-button delete-ingredient" type="button" data-id="${item.id}">Excluir</button>
+              <button class="ghost-button edit-ingredient" type="button" data-id="${escapeHtml(item.id)}">Editar</button>
+              <button class="ghost-button restock-ingredient" type="button" data-id="${escapeHtml(item.id)}">Repor</button>
+              <button class="danger-button delete-ingredient" type="button" data-id="${escapeHtml(item.id)}">Excluir</button>
             </div>
           </td>
         </tr>`;
@@ -1350,6 +1616,13 @@ function renderProducts() {
     state.products
       .map((product) => {
         const pendingRecipe = !product.recipe.length;
+        const cmv = calculateProductCmv(product);
+        const profit = product.price - cmv;
+        const margin = product.price > 0 ? (profit / product.price) * 100 : 0;
+        const cmvPercent = product.price > 0 ? (cmv / product.price) * 100 : 0;
+        const popularity = state.sales
+          .filter((sale) => sale.productId === product.id)
+          .reduce((sum, sale) => sum + sale.quantity, 0);
         const recipeItems = product.recipe
           .map((line) => {
             const ingredient = findIngredient(line.ingredientId);
@@ -1365,9 +1638,16 @@ function renderProducts() {
             <strong>${escapeHtml(product.name)} - ${currency.format(product.price)}</strong>
             <div class="row-actions">
               ${pendingRecipe ? `<span class="badge warn">Ficha pendente</span>` : ""}
-              <button class="ghost-button edit-product" type="button" data-id="${product.id}">Editar</button>
-              <button class="danger-button delete-product" type="button" data-id="${product.id}">Excluir</button>
+              ${cmvPercent > 40 ? `<span class="badge danger">CMV alto</span>` : ""}
+              <button class="ghost-button edit-product" type="button" data-id="${escapeHtml(product.id)}">Editar</button>
+              <button class="danger-button delete-product" type="button" data-id="${escapeHtml(product.id)}">Excluir</button>
             </div>
+          </div>
+          <div class="product-metrics">
+            <span>Custo ${currency.format(cmv)}</span>
+            <span>Lucro un. ${currency.format(profit)}</span>
+            <span>Margem ${margin.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%</span>
+            <span>Popularidade ${popularity}</span>
           </div>
           <small>Baixa automatica de estoque ao vender 1 unidade:</small>
           <ul>${recipeItems || "<li>Sem materia-prima cadastrada</li>"}</ul>
@@ -1396,6 +1676,9 @@ function renderDigitalMenu() {
   const unavailableProducts = activeProducts.filter((product) => !product.recipe.length || availableForProduct(product) <= 0);
   const draftTotals = getQuickOrderTotals();
   const form = quickOrderDraft.form;
+  const matchedCustomer = findCustomerByPhone(form.customerPhone);
+  const addressPlaceholder = form.destination === "table" ? "Numero da mesa" : "Endereco";
+  const showAddress = form.destination !== "pickup";
 
   $("#digitalMenuList").innerHTML =
     `<div class="quick-order">
@@ -1412,9 +1695,9 @@ function renderDigitalMenu() {
             <strong>${escapeHtml(publicName)}</strong>
             <small>${currency.format(product.price)} - disponivel ${available}</small>
           </div>
-          <button class="icon-button quick-decrease" type="button" data-id="${product.id}">-</button>
+          <button class="icon-button quick-decrease" type="button" data-id="${escapeHtml(product.id)}">-</button>
           <span>${selected}</span>
-          <button class="icon-button quick-increase" type="button" data-id="${product.id}">+</button>
+          <button class="icon-button quick-increase" type="button" data-id="${escapeHtml(product.id)}">+</button>
         </div>`;
       }).join("") || `<div class="empty">Nenhum produto disponivel. Confira ficha tecnica e estoque.</div>`
         }
@@ -1423,19 +1706,18 @@ function renderDigitalMenu() {
         <strong>Dados do pedido</strong>
         <input id="quickCustomer" type="text" placeholder="Cliente" value="${escapeHtml(form.customerName)}" />
         <input id="quickPhone" type="tel" placeholder="Telefone" value="${escapeHtml(form.customerPhone)}" />
+        ${matchedCustomer ? `<div class="customer-match">Cliente recorrente: <strong>${escapeHtml(matchedCustomer.name)}</strong> - ${matchedCustomer.orderCount} pedido(s)</div>` : ""}
         <label class="check-row compact-check"><input id="quickWhatsapp" type="checkbox" ${form.customerWhatsapp ? "checked" : ""} /> WhatsApp</label>
         <select id="quickDestination">
           <option value="delivery" ${form.destination === "delivery" ? "selected" : ""}>Entrega</option>
           <option value="table" ${form.destination === "table" ? "selected" : ""}>Mesa</option>
           <option value="pickup" ${form.destination === "pickup" ? "selected" : ""}>Retirada</option>
         </select>
-        <input id="quickAddress" type="text" placeholder="Endereco ou mesa" value="${escapeHtml(form.address)}" />
+        <input id="quickAddress" class="${showAddress ? "" : "hidden"}" type="text" placeholder="${addressPlaceholder}" value="${escapeHtml(showAddress ? form.address : "")}" />
         <select id="quickPayment">
-          <option value="not_informed" ${form.paymentMethod === "not_informed" ? "selected" : ""}>Pagamento</option>
           <option value="pix" ${form.paymentMethod === "pix" ? "selected" : ""}>Pix</option>
           <option value="cash" ${form.paymentMethod === "cash" ? "selected" : ""}>Dinheiro</option>
           <option value="card" ${form.paymentMethod === "card" ? "selected" : ""}>Cartao</option>
-          <option value="other" ${form.paymentMethod === "other" ? "selected" : ""}>Outro</option>
         </select>
         <input id="quickDeliveryFee" type="number" min="0" step="0.01" placeholder="Taxa de entrega" value="${form.deliveryFee || ""}" />
         <input id="quickDiscount" type="number" min="0" step="0.01" placeholder="Desconto" value="${form.discount || ""}" />
@@ -1506,6 +1788,7 @@ function renderDigitalMenu() {
         const nextStatus = status.next ? getOrderStatus(status.next) : null;
         const canAccept = order.status === "awaiting_acceptance";
         const canAdvance = Boolean(nextStatus) && !canAccept;
+        const canCancel = order.status !== "canceled" && order.status !== "payment_confirmed";
         const itemSummary = getOrderItems(order)
           .map((item) => `${item.quantity}x ${escapeHtml(item.productName)}`)
           .join("<br>");
@@ -1525,16 +1808,28 @@ function renderDigitalMenu() {
           <p>${getPaymentMethodLabel(order.paymentMethod)} - ${currency.format(order.total)}</p>
           <p>${escapeHtml(order.note || "Sem observacao")}</p>
           <div class="row-actions">
-            <button class="ghost-button print-menu-order" type="button" data-id="${order.id}">Imprimir</button>
+            <button class="ghost-button print-kitchen-order" type="button" data-id="${escapeHtml(order.id)}">Cozinha</button>
+            <button class="ghost-button print-menu-order" type="button" data-id="${escapeHtml(order.id)}">Cliente</button>
             ${
               canAccept
-                ? `<button class="ghost-button accept-menu-order" type="button" data-id="${order.id}">Aceitar pedido</button>
-                   <button class="danger-button cancel-menu-order" type="button" data-id="${order.id}">Cancelar</button>`
+                ? `<button class="ghost-button accept-menu-order" type="button" data-id="${escapeHtml(order.id)}">Aceitar pedido</button>
+                   <button class="danger-button cancel-menu-order" type="button" data-id="${escapeHtml(order.id)}">Cancelar</button>`
+                : ""
+            }
+            ${!canAccept && canCancel ? `<button class="danger-button cancel-menu-order" type="button" data-id="${escapeHtml(order.id)}">Cancelar</button>` : ""}
+            ${
+              canAdvance
+                ? `<button class="ghost-button advance-menu-order" type="button" data-id="${escapeHtml(order.id)}">Avancar para ${getOrderStatusLabel(order, status.next)}</button>`
                 : ""
             }
             ${
-              canAdvance
-                ? `<button class="ghost-button advance-menu-order" type="button" data-id="${order.id}">Avancar para ${getOrderStatusLabel(order, status.next)}</button>`
+              order.status === "dispatching" && order.destination === "delivery" && !order.deliveryStartedAt
+                ? `<button class="ghost-button start-delivery" type="button" data-id="${escapeHtml(order.id)}">Saiu entrega</button>`
+                : ""
+            }
+            ${
+              order.status === "dispatching" && order.destination === "delivery" && order.deliveryStartedAt && !order.deliveryFinishedAt
+                ? `<button class="ghost-button finish-delivery" type="button" data-id="${escapeHtml(order.id)}">Entregue</button>`
                 : ""
             }
           </div>
@@ -1562,9 +1857,7 @@ function renderDigitalMenu() {
 
   [
     "#quickCustomer",
-    "#quickPhone",
     "#quickWhatsapp",
-    "#quickDestination",
     "#quickAddress",
     "#quickPayment",
     "#quickDeliveryFee",
@@ -1577,6 +1870,23 @@ function renderDigitalMenu() {
     if (input) input.addEventListener("change", updateQuickOrderPreview);
   });
 
+  if ($("#quickPhone")) {
+    $("#quickPhone").addEventListener("input", () => {
+      syncQuickOrderFormFromDom();
+      updateQuickOrderPreview();
+    });
+    $("#quickPhone").addEventListener("change", updateQuickOrderFromPhone);
+    $("#quickPhone").addEventListener("blur", updateQuickOrderFromPhone);
+  }
+
+  if ($("#quickDestination")) {
+    $("#quickDestination").addEventListener("change", () => {
+      syncQuickOrderFormFromDom();
+      if (quickOrderDraft.form.destination === "pickup") quickOrderDraft.form.address = "";
+      renderDigitalMenu();
+    });
+  }
+
   if ($("#createQuickOrder")) $("#createQuickOrder").addEventListener("click", createMenuOrder);
   if ($("#clearQuickOrder")) $("#clearQuickOrder").addEventListener("click", clearQuickOrderDraft);
 
@@ -1584,6 +1894,12 @@ function renderDigitalMenu() {
     button.addEventListener("click", () => {
       const order = findOrder(button.dataset.id);
       if (order) printOrderReceipt(order);
+    });
+  });
+  $$(".print-kitchen-order").forEach((button) => {
+    button.addEventListener("click", () => {
+      const order = findOrder(button.dataset.id);
+      if (order) printKitchenCommand(order);
     });
   });
 
@@ -1597,6 +1913,12 @@ function renderDigitalMenu() {
 
   $$(".cancel-menu-order").forEach((button) => {
     button.addEventListener("click", () => cancelMenuOrder(button.dataset.id));
+  });
+  $$(".start-delivery").forEach((button) => {
+    button.addEventListener("click", () => startDelivery(button.dataset.id));
+  });
+  $$(".finish-delivery").forEach((button) => {
+    button.addEventListener("click", () => finishDelivery(button.dataset.id));
   });
 }
 
@@ -1633,6 +1955,49 @@ function renderMenuCatalog() {
       .join("") || `<div class="empty">Nenhum produto ativo no cardapio.</div>`;
 }
 
+function renderCustomers() {
+  const table = $("#customersTable");
+  if (!table) return;
+  const query = customerFilter.query.trim().toLowerCase();
+  const customers = state.customers
+    .filter((customer) => {
+      if (!query) return true;
+      return [customer.name, customer.phone, customer.address]
+        .join(" ")
+        .toLowerCase()
+        .includes(query);
+    })
+    .slice()
+    .sort((a, b) => new Date(b.lastOrderAt || b.createdAt) - new Date(a.lastOrderAt || a.createdAt));
+
+  table.innerHTML =
+    customers
+      .map((customer) => {
+        const lastOrder = customer.lastOrderAt ? fileDateFormat.format(new Date(customer.lastOrderAt)) : "-";
+        return `<tr>
+          <td>
+            <strong>${escapeHtml(customer.name)}</strong>
+            <small>${escapeHtml(customer.address || "Sem endereco principal")}</small>
+          </td>
+          <td>${escapeHtml(customer.phone)}</td>
+          <td>${customer.orderCount.toLocaleString("pt-BR")}</td>
+          <td>${currency.format(customer.totalSpent)}</td>
+          <td>${lastOrder}</td>
+          <td><button class="ghost-button use-customer" type="button" data-id="${escapeHtml(customer.id)}">Usar no pedido</button></td>
+        </tr>`;
+      })
+      .join("") || `<tr><td colspan="6" class="empty">Nenhum cliente cadastrado automaticamente ainda.</td></tr>`;
+
+  table.querySelectorAll(".use-customer").forEach((button) => {
+    button.addEventListener("click", () => {
+      const customer = findCustomer(button.dataset.id);
+      if (!customer) return;
+      applyCustomerToQuickOrder(customer);
+      activateTab("menu");
+    });
+  });
+}
+
 function getFinanceMetrics() {
   const metrics = calculatePeriodMetrics();
   const orders = state.orders.filter((order) => order.status !== "canceled" && isInPeriod(order.date));
@@ -1667,11 +2032,42 @@ function getFinanceMetrics() {
   };
 }
 
+function calculateRealResultForRange(start, end) {
+  const inRange = (dateValue) => {
+    const date = new Date(dateValue);
+    return date >= start && date <= end;
+  };
+  const sales = state.sales.filter((sale) => inRange(sale.date) && findOrder(sale.orderId)?.status !== "canceled");
+  const revenue = sales.reduce((sum, sale) => sum + sale.total, 0);
+  const cmv = sales.reduce((sum, sale) => sum + getSaleCmv(sale), 0);
+  const expenses = state.expenses.filter((expense) => inRange(expense.date)).reduce((sum, expense) => sum + expense.amount, 0);
+  return revenue - cmv - expenses;
+}
+
+function getFinanceResultSnapshots() {
+  const now = new Date();
+  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const dayEnd = new Date(dayStart);
+  dayEnd.setDate(dayEnd.getDate() + 1);
+  const weekStart = new Date(dayStart);
+  weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 7);
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  return {
+    day: calculateRealResultForRange(dayStart, dayEnd),
+    week: calculateRealResultForRange(weekStart, weekEnd),
+    month: calculateRealResultForRange(monthStart, monthEnd),
+  };
+}
+
 function renderFinance() {
   const cards = $("#financeSummaryCards");
   if (!cards) return;
   syncFinancePeriodControls();
   const data = getFinanceMetrics();
+  const snapshots = getFinanceResultSnapshots();
 
   const summaryCards = [
     ["Faturamento", currency.format(data.soldTotal), "Periodo filtrado"],
@@ -1682,6 +2078,9 @@ function renderFinance() {
     ["Qtd. vendas", data.sales.length.toLocaleString("pt-BR"), "Vendas geradas"],
     ["Despesas", currency.format(data.expensesTotal), "Operacao real"],
     ["Lucro real", currency.format(data.realProfit), "Faturamento - CMV - despesas"],
+    ["Resultado diario", currency.format(snapshots.day), "Hoje"],
+    ["Resultado semanal", currency.format(snapshots.week), "Semana atual"],
+    ["Resultado mensal", currency.format(snapshots.month), "Mes atual"],
     ["Investido em estoque", currency.format(getStockValue()), "Saldo atual x custo medio"],
   ];
   cards.innerHTML = summaryCards
@@ -1715,16 +2114,147 @@ function renderFinance() {
     .map((row) => `<p><span>${row[0]}</span><strong>${row[1]}</strong></p>`)
     .join("");
 
+  renderProfessionalCash(data);
   renderExpensesTable(data);
   renderCashConference(data);
   renderFinanceMovements(data);
+}
+
+function getCashExpected(data = getFinanceMetrics()) {
+  const openCash = getOpenCash();
+  const adjustments = openCash ? state.cashAdjustments.filter((item) => item.cashId === openCash.id) : [];
+  const supplies = adjustments.filter((item) => item.type === "suprimento").reduce((sum, item) => sum + item.amount, 0);
+  const withdrawals = adjustments.filter((item) => item.type === "sangria").reduce((sum, item) => sum + item.amount, 0);
+  return {
+    cash: data.cash + (openCash?.openingAmount || 0) + supplies - withdrawals,
+    pix: data.pix,
+    card: data.card,
+    other: data.other,
+    supplies,
+    withdrawals,
+  };
+}
+
+function renderProfessionalCash(data = getFinanceMetrics()) {
+  const container = $("#cashStatus");
+  if (!container) return;
+  const openCash = getOpenCash();
+  const expected = getCashExpected(data);
+  const totalExpected = expected.cash + expected.pix + expected.card + expected.other;
+  if (!openCash) {
+    container.innerHTML = `<p><span>Status</span><strong class="badge warn">Caixa fechado</strong></p>
+      <p><span>Pronto para abertura</span><strong>${new Date().toLocaleDateString("pt-BR")}</strong></p>`;
+    return;
+  }
+
+  container.innerHTML = `
+    <p><span>Status</span><strong class="badge">Caixa aberto</strong></p>
+    <p><span>Responsavel</span><strong>${escapeHtml(openCash.responsible)}</strong></p>
+    <p><span>Abertura</span><strong>${dateFormat.format(new Date(openCash.openedAt))}</strong></p>
+    <p><span>Valor inicial</span><strong>${currency.format(openCash.openingAmount)}</strong></p>
+    <p><span>Suprimentos</span><strong>${currency.format(expected.supplies)}</strong></p>
+    <p><span>Sangrias</span><strong>${currency.format(expected.withdrawals)}</strong></p>
+    <p><span>Total esperado</span><strong>${currency.format(totalExpected)}</strong></p>`;
+}
+
+async function openCash() {
+  if (getOpenCash()) {
+    alert("Ja existe um caixa aberto.");
+    return;
+  }
+  const responsible = $("#cashResponsible").value.trim() || getCurrentUserName();
+  const openingAmount = toNumber($("#cashOpeningAmount").value);
+  const cash = {
+    id: createId(),
+    openedAt: new Date().toISOString(),
+    closedAt: "",
+    responsible,
+    openingAmount,
+    cashExpected: 0,
+    pixExpected: 0,
+    cardExpected: 0,
+    otherExpected: 0,
+    totalExpected: 0,
+    totalCounted: 0,
+    difference: 0,
+    notes: "",
+    status: "open",
+  };
+  state.cashClosings.push(cash);
+  addAuditLog("Caixa aberto", `Responsavel: ${responsible} / Inicial: ${currency.format(openingAmount)}`);
+  await saveState();
+  renderAll();
+}
+
+async function registerCashAdjustment() {
+  const openCash = getOpenCash();
+  if (!openCash) {
+    alert("Abra o caixa antes de registrar suprimento ou sangria.");
+    return;
+  }
+  const amount = toNumber($("#cashAdjustmentAmount").value);
+  const note = $("#cashAdjustmentNote").value.trim();
+  if (amount <= 0 || !note) {
+    alert("Informe valor e observacao para registrar o ajuste de caixa.");
+    return;
+  }
+  const type = $("#cashAdjustmentType").value === "sangria" ? "sangria" : "suprimento";
+  state.cashAdjustments.push({
+    id: createId(),
+    cashId: openCash.id,
+    type,
+    amount,
+    note,
+    responsible: getCurrentUserName(),
+    date: new Date().toISOString(),
+  });
+  addAuditLog(type === "sangria" ? "Sangria registrada" : "Suprimento registrado", `${currency.format(amount)} - ${note}`);
+  $("#cashAdjustmentAmount").value = "";
+  $("#cashAdjustmentNote").value = "";
+  await saveState();
+  renderAll();
+}
+
+async function closeCash() {
+  const openCash = getOpenCash();
+  if (!openCash) {
+    alert("Nao ha caixa aberto para fechar.");
+    return;
+  }
+  const data = getFinanceMetrics();
+  const expected = getCashExpected(data);
+  const totalExpected = expected.cash + expected.pix + expected.card + expected.other;
+  const totalCounted = toNumber($("#cashCounted").value) + toNumber($("#pixCounted").value) + toNumber($("#cardCounted").value);
+  const difference = totalCounted - totalExpected;
+  const notes = $("#cashConferenceNote").value.trim();
+  if (Math.abs(difference) >= 0.01 && !notes) {
+    alert("Informe uma observacao para fechar caixa com divergencia.");
+    $("#cashConferenceNote").focus();
+    return;
+  }
+  if (!await cloudConfirm(`Fechar caixa com diferenca de ${currency.format(difference)}?`)) return;
+  openCash.closedAt = new Date().toISOString();
+  openCash.cashExpected = expected.cash;
+  openCash.pixExpected = expected.pix;
+  openCash.cardExpected = expected.card;
+  openCash.otherExpected = expected.other;
+  openCash.totalExpected = totalExpected;
+  openCash.totalCounted = totalCounted;
+  openCash.difference = difference;
+  openCash.notes = notes;
+  openCash.status = "closed";
+  addAuditLog("Caixa fechado", `Esperado: ${currency.format(totalExpected)} / Contado: ${currency.format(totalCounted)} / Diferenca: ${currency.format(difference)}`);
+  await saveState();
+  renderAll();
+  alert("Caixa fechado. Gere um backup em Configuracoes para guardar o fechamento.");
+  activateTab("settings");
 }
 
 function renderCashConference(data = getFinanceMetrics()) {
   const container = $("#cashConference");
   if (!container) return;
   const checks = [
-    ["Dinheiro", data.cash, toNumber($("#cashCounted")?.value)],
+    ["Dinheiro", getCashExpected(data).cash, toNumber($("#cashCounted")?.value)],
     ["Pix", data.pix, toNumber($("#pixCounted")?.value)],
     ["Cartao", data.card, toNumber($("#cardCounted")?.value)],
   ];
@@ -1826,13 +2356,14 @@ function startExpenseEdit(id) {
   activateTab("finance");
 }
 
-function deleteExpense(id) {
+async function deleteExpense(id) {
   const expense = findExpense(id);
   if (!expense) return;
-  if (!confirm(`Deseja excluir a despesa "${expense.description}"?`)) return;
+  if (!await cloudConfirm(`Deseja excluir a despesa "${expense.description}"?`)) return;
   state.expenses = state.expenses.filter((item) => item.id !== id);
+  addAuditLog("Despesa removida", `${expense.description} - ${currency.format(expense.amount)}`);
   if ($("#expenseId")?.value === id) resetExpenseForm();
-  saveState();
+  await saveState();
   renderAll();
 }
 
@@ -1851,8 +2382,8 @@ function renderExpensesTable(data = getFinanceMetrics()) {
           <td>${currency.format(expense.amount)}</td>
           <td>
             <div class="row-actions">
-              <button class="ghost-button edit-expense" type="button" data-id="${expense.id}">Editar</button>
-              <button class="danger-button delete-expense" type="button" data-id="${expense.id}">Excluir</button>
+              <button class="ghost-button edit-expense" type="button" data-id="${escapeHtml(expense.id)}">Editar</button>
+              <button class="danger-button delete-expense" type="button" data-id="${escapeHtml(expense.id)}">Excluir</button>
             </div>
           </td>
         </tr>`,
@@ -1894,12 +2425,12 @@ function renderKitchen() {
               <div class="row-actions">
                 ${
                   order.status === "awaiting_acceptance"
-                    ? `<button class="ghost-button accept-menu-order" type="button" data-id="${order.id}">Aceitar</button>`
+                    ? `<button class="ghost-button accept-menu-order" type="button" data-id="${escapeHtml(order.id)}">Aceitar</button>`
                     : ""
                 }
                 ${
                   order.status !== "awaiting_acceptance"
-                    ? `<button class="ghost-button advance-menu-order" type="button" data-id="${order.id}">Avancar</button>`
+                    ? `<button class="ghost-button advance-menu-order" type="button" data-id="${escapeHtml(order.id)}">Avancar</button>`
                     : ""
                 }
               </div>
@@ -1920,6 +2451,40 @@ function renderKitchen() {
   board.querySelectorAll(".advance-menu-order").forEach((button) => {
     button.addEventListener("click", () => advanceMenuOrder(button.dataset.id));
   });
+}
+
+async function startDelivery(id){
+  const name=await cloudPrompt('Nome do entregador:'); if(!name)return;
+  const fee=Number(await cloudPrompt('Valor pago ao entregador:','0')); if(!Number.isFinite(fee))return;
+  await cloudMutate('delivery.start',{id,name,fee}); renderAll();
+}
+
+async function finishDelivery(id){await cloudMutate('delivery.finish',{id});renderAll();}
+
+function renderDeliveries() {
+  const list = $("#deliveriesList");
+  const stats = $("#deliveryStats");
+  if (!list || !stats) return;
+  const deliveries = state.deliveries.slice().sort((a, b) => new Date(b.startedAt || b.deliveredAt) - new Date(a.startedAt || a.deliveredAt));
+  list.innerHTML =
+    deliveries
+      .slice(0, 20)
+      .map((delivery) => {
+        const status = delivery.deliveredAt ? "Entregue" : "Em rota";
+        return `<p><span>#${escapeHtml(delivery.orderNumber)} - ${escapeHtml(delivery.customerName || "Cliente")}<br><small>${escapeHtml(delivery.motoboy)} - ${status}</small></span><strong>${currency.format(delivery.fee)}</strong></p>`;
+      })
+      .join("") || `<p><span>Nenhuma entrega registrada.</span><strong>-</strong></p>`;
+
+  const completed = deliveries.filter((delivery) => delivery.startedAt && delivery.deliveredAt);
+  const averageMinutes = completed.length
+    ? completed.reduce((sum, delivery) => sum + (new Date(delivery.deliveredAt) - new Date(delivery.startedAt)) / 60000, 0) / completed.length
+    : 0;
+  const byMotoboy = Object.entries(sumBy(deliveries, (delivery) => delivery.motoboy, () => 1))
+    .map(([name, total]) => `<p><span>${escapeHtml(name)}</span><strong>${total}</strong></p>`)
+    .join("");
+  stats.innerHTML = `<p><span>Tempo medio entrega</span><strong>${averageMinutes.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} min</strong></p>
+    <p><span>Total de entregas</span><strong>${deliveries.length}</strong></p>
+    ${byMotoboy || `<p><span>Motoboys</span><strong>-</strong></p>`}`;
 }
 
 function getCashDateValue() {
@@ -2092,15 +2657,72 @@ function renderReports() {
   const revenueByDay = Object.entries(sumBy(metrics.sales, (sale) => sale.date.slice(0, 10), (sale) => sale.total))
     .map(([label, value]) => ({ label: fileDateFormat.format(new Date(`${label}T12:00:00`)), value }))
     .sort((a, b) => a.label.localeCompare(b.label));
+  const profitByUnit = state.products
+    .map((product) => ({ label: product.name, value: product.price - calculateProductCmv(product) }))
+    .sort((a, b) => b.value - a.value);
+  const salesByHour = Object.entries(sumBy(metrics.sales, (sale) => `${new Date(sale.date).getHours()}h`, (sale) => sale.quantity))
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value);
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const previousMonthEnd = new Date(now.getFullYear(), now.getMonth(), 1);
+  const currentMonth = calculateRealResultForRange(monthStart, new Date(now.getFullYear(), now.getMonth() + 1, 1));
+  const previousMonth = calculateRealResultForRange(previousMonthStart, previousMonthEnd);
+  const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+  const previousWeekStart = new Date(weekStart);
+  previousWeekStart.setDate(previousWeekStart.getDate() - 7);
+  const currentWeek = calculateRealResultForRange(weekStart, new Date());
+  const previousWeek = calculateRealResultForRange(previousWeekStart, weekStart);
 
   container.innerHTML = [
+    `<section class="report-block"><h3>Comparativos</h3>
+      <p>Mes atual x anterior: <strong>${currency.format(currentMonth)} / ${currency.format(previousMonth)}</strong></p>
+      <p>Semana atual x anterior: <strong>${currency.format(currentWeek)} / ${currency.format(previousWeek)}</strong></p>
+      <p>Horario de pico: <strong>${salesByHour[0]?.label || "-"}</strong></p>
+    </section>`,
     renderBarList("Produtos mais vendidos", salesByProduct.slice(0, 6)),
     renderBarList("Produtos menos vendidos", leastSold.slice(0, 6)),
     renderBarList("Ingredientes mais consumidos", consumedRows.slice(0, 6), (value) => value.toLocaleString("pt-BR", { maximumFractionDigits: 2 })),
     renderBarList("Lucro por produto", profitByProduct.slice(0, 6), (value) => currency.format(value)),
+    renderBarList("Produto mais lucrativo", profitByUnit.slice(0, 6), (value) => currency.format(value)),
+    renderBarList("Produto menos lucrativo", profitByUnit.slice().reverse().slice(0, 6), (value) => currency.format(value)),
+    renderBarList("Horario de pico", salesByHour.slice(0, 8)),
     renderBarList("Faturamento por periodo", revenueByDay.slice(-10), (value) => currency.format(value)),
     renderBarList("Evolucao de vendas", revenueByDay.slice(-10), (value) => currency.format(value)),
   ].join("");
+}
+
+function renderSettings() {
+  if (!$("#settingsForm")) return;
+  const settings = getStoreSettings();
+  $("#settingCompanyName").value = settings.companyName;
+  $("#settingAddress").value = settings.address;
+  $("#settingPhone").value = settings.phone;
+  $("#settingWhatsapp").value = settings.whatsapp;
+  $("#settingDefaultDeliveryFee").value = settings.defaultDeliveryFee || "";
+  $("#settingLogoUrl").value = settings.logoUrl;
+  $("#settingPrintMessage").value = settings.printMessage;
+}
+
+function renderAudit() {
+  const table = $("#auditTable");
+  if (!table) return;
+  table.innerHTML =
+    state.auditLogs
+      .slice()
+      .sort((a, b) => new Date(b.date) - new Date(a.date))
+      .slice(0, 100)
+      .map(
+        (log) => `<tr>
+          <td>${dateFormat.format(new Date(log.date))}</td>
+          <td>${escapeHtml(log.user)}</td>
+          <td>${escapeHtml(log.action)}</td>
+          <td>${escapeHtml(log.detail)}</td>
+        </tr>`,
+      )
+      .join("") || `<tr><td colspan="4" class="empty">Nenhuma alteracao registrada ainda.</td></tr>`;
 }
 
 function renderPurchases() {
@@ -2116,8 +2738,8 @@ function renderPurchases() {
           <td>${currency.format(purchase.cost)}</td>
           <td>
             <div class="row-actions">
-              <button class="ghost-button edit-purchase" type="button" data-id="${purchase.id}">Editar</button>
-              <button class="danger-button delete-purchase" type="button" data-id="${purchase.id}">Excluir</button>
+              <button class="ghost-button edit-purchase" type="button" data-id="${escapeHtml(purchase.id)}">Editar</button>
+              <button class="danger-button delete-purchase" type="button" data-id="${escapeHtml(purchase.id)}">Excluir</button>
             </div>
           </td>
         </tr>`,
@@ -2146,7 +2768,7 @@ function renderSales() {
           <td>${currency.format(sale.total)}</td>
           <td>
             <div class="row-actions">
-              <button class="ghost-button edit-sale" type="button" data-id="${sale.id}">Editar</button>
+              <button class="ghost-button edit-sale" type="button" data-id="${escapeHtml(sale.id)}">Editar</button>
             </div>
           </td>
         </tr>`,
@@ -2189,7 +2811,7 @@ function renderRecipeSearchResults() {
     matches
       .map(
         (ingredient) =>
-          `<button class="recipe-search-option" type="button" data-id="${ingredient.id}">${escapeHtml(ingredient.name)} (${escapeHtml(ingredient.unit)})</button>`,
+          `<button class="recipe-search-option" type="button" data-id="${escapeHtml(ingredient.id)}">${escapeHtml(ingredient.name)} (${escapeHtml(ingredient.unit)})</button>`,
       )
       .join("") ||
     `<span class="empty">${state.ingredients.length ? "Nenhuma materia-prima encontrada." : "Cadastre materias-primas no estoque primeiro."}</span>`;
@@ -2384,6 +3006,8 @@ function resetIngredientForm() {
   $("#ingredientMin").value = 0;
   $("#ingredientRestockQuantity").value = 0;
   $("#ingredientRestockCost").value = 0;
+  $("#stockAdjustmentQuantity").value = 0;
+  $("#stockAdjustmentReason").value = "";
   $("#ingredientFormTitle").textContent = "Novo ingrediente";
   $("#ingredientSubmit").textContent = "Adicionar ingrediente";
   $("#cancelIngredientEdit").classList.add("hidden");
@@ -2400,6 +3024,8 @@ function startIngredientEdit(id) {
   $("#ingredientMin").value = ingredient.min;
   $("#ingredientRestockQuantity").value = 0;
   $("#ingredientRestockCost").value = 0;
+  $("#stockAdjustmentQuantity").value = 0;
+  $("#stockAdjustmentReason").value = "";
   $("#ingredientFormTitle").textContent = "Editar ingrediente";
   $("#ingredientSubmit").textContent = "Salvar alteracoes";
   $("#cancelIngredientEdit").classList.remove("hidden");
@@ -2444,26 +3070,9 @@ function startUserEdit(id) {
   $("#userName").focus();
 }
 
-function deleteUser(id) {
-  if (!isAdmin()) return;
-  const user = findUser(id);
-  const currentUser = getCurrentUser();
-  if (!user || !currentUser) return;
-
-  const adminCount = authState.users.filter((item) => item.role === "admin").length;
-  if (user.id === currentUser.id) {
-    alert("Voce nao pode excluir o usuario que esta logado.");
-    return;
-  }
-  if (user.role === "admin" && adminCount <= 1) {
-    alert("Mantenha pelo menos um administrador ativo.");
-    return;
-  }
-  if (!confirm(`Deseja excluir o acesso de "${user.email}"?`)) return;
-  authState.users = authState.users.filter((item) => item.id !== id);
-  saveAuthState();
-  if ($("#userId").value === id) resetUserForm();
-  renderAll();
+async function deleteUser(id){
+  if(!isAdmin() || !await cloudConfirm('Desativar o acesso deste usuário?')) return;
+  await cloudRequest('/api/users/disable',{id}); await cloudRefresh(true); resetUserForm();
 }
 
 function getQuickOrderItem(productId) {
@@ -2542,13 +3151,14 @@ function getQuickOrderFormData() {
 
 function syncQuickOrderFormFromDom() {
   if (!$("#quickCustomer")) return;
+  const destination = $("#quickDestination").value || "delivery";
   quickOrderDraft.form = {
     customerName: $("#quickCustomer").value.trim(),
     customerPhone: $("#quickPhone").value.trim(),
     customerWhatsapp: Boolean($("#quickWhatsapp").checked),
-    destination: $("#quickDestination").value || "delivery",
-    address: $("#quickAddress").value.trim(),
-    paymentMethod: $("#quickPayment").value || "not_informed",
+    destination,
+    address: destination === "pickup" ? "" : $("#quickAddress").value.trim(),
+    paymentMethod: $("#quickPayment").value || "pix",
     deliveryFee: toNumber($("#quickDeliveryFee").value),
     discount: toNumber($("#quickDiscount").value),
     surcharge: toNumber($("#quickSurcharge").value),
@@ -2565,6 +3175,7 @@ function updateQuickOrderPreview() {
 }
 
 function clearQuickOrderDraft() {
+  const settings = getStoreSettings();
   quickOrderDraft.items = [];
   quickOrderDraft.form = {
     customerName: "",
@@ -2572,8 +3183,8 @@ function clearQuickOrderDraft() {
     customerWhatsapp: true,
     destination: "delivery",
     address: "",
-    paymentMethod: "not_informed",
-    deliveryFee: 0,
+    paymentMethod: "pix",
+    deliveryFee: settings.defaultDeliveryFee || 0,
     discount: 0,
     surcharge: 0,
     note: "",
@@ -2582,159 +3193,33 @@ function clearQuickOrderDraft() {
 }
 
 function getMenuInput(productId, className) {
-  return document.querySelector(`.${className}[data-id="${productId}"]`);
+  return document.querySelector(`.${className}[data-id="${escapeHtml(productId)}"]`);
 }
 
-function createMenuOrder() {
+async function createMenuOrder(){
   syncQuickOrderDraft();
-  if (!quickOrderDraft.items.length) {
-    alert("Selecione pelo menos um produto para criar o pedido.");
-    return;
-  }
-  if (!canFulfillItems(quickOrderDraft.items)) {
-    alert("Estoque insuficiente para criar esse pedido.");
-    return;
-  }
-
-  const formData = getQuickOrderFormData();
-  if (!formData.customerName) {
-    alert("Informe o nome do cliente.");
-    $("#quickCustomer").focus();
-    return;
-  }
-  if (formData.destination === "delivery" && !formData.address) {
-    alert("Informe o endereco para entrega.");
-    $("#quickAddress").focus();
-    return;
-  }
-  if (formData.destination === "table" && !formData.address) {
-    alert("Informe o numero da mesa.");
-    $("#quickAddress").focus();
-    return;
-  }
-
-  const summary = [
-    "Confirmar pedido?",
-    "",
-    `Cliente: ${formData.customerName}`,
-    `Telefone: ${formData.customerPhone || "Nao informado"}${formData.customerWhatsapp ? " / WhatsApp" : ""}`,
-    `Destino: ${getOrderDestinationLabel(formData.destination)}${formData.address ? ` - ${formData.address}` : ""}`,
-    `Pagamento: ${getPaymentMethodLabel(formData.paymentMethod)}`,
-    "",
-    ...quickOrderDraft.items.map((item) => `${item.quantity}x ${item.productName} - ${currency.format(item.total)}`),
-    "",
-    `Taxa: ${currency.format(formData.deliveryFee)}`,
-    `Desconto: ${currency.format(formData.discount)}`,
-    `Acrescimo: ${currency.format(formData.surcharge)}`,
-    `Total: ${currency.format(formData.total)}`,
-    "",
-    `Observacao: ${formData.note || "Sem observacao"}`,
-  ].join("\n");
-
-  if (!confirm(summary)) return;
-
-  const order = {
-    id: createId(),
-    productId: quickOrderDraft.items[0].productId,
-    productName: quickOrderDraft.items.length === 1 ? quickOrderDraft.items[0].productName : `${quickOrderDraft.items.length} itens`,
-    items: clone(quickOrderDraft.items),
-    customerName: formData.customerName,
-    customerPhone: formData.customerPhone,
-    customerWhatsapp: formData.customerWhatsapp,
-    address: formData.address,
-    paymentMethod: formData.paymentMethod,
-    note: formData.note,
-    destination: formData.destination,
-    quantity: quickOrderDraft.items.reduce((sum, item) => sum + item.quantity, 0),
-    price: quickOrderDraft.items[0].price,
-    subtotal: formData.subtotal,
-    deliveryFee: formData.deliveryFee,
-    discount: formData.discount,
-    surcharge: formData.surcharge,
-    total: formData.total,
-    status: "awaiting_acceptance",
-    date: new Date().toISOString(),
-    acceptedAt: "",
-    readyAt: "",
-    dispatchedAt: "",
-    paidAt: "",
-    statusUpdatedAt: new Date().toISOString(),
-    confirmedAt: "",
-    saleId: "",
-  };
-
-  state.orders.push(order);
-  quickOrderDraft.items = [];
-  clearQuickOrderDraft();
-
-  saveState();
-  renderAll();
-  playNewOrderSound();
-  if (printSettings.autoPrintOrders) printOrderReceipt(order);
+  if(!quickOrderDraft.items.length) return alert('Selecione pelo menos um produto.');
+  const form=getQuickOrderFormData();
+  if(!form.customerName) return alert('Informe o nome do cliente.');
+  if(form.destination!=='pickup' && !form.address) return alert('Informe o endereço ou a mesa.');
+  if(!await cloudConfirm('Confirmar pedido de '+form.customerName+'? Total previsto: '+currency.format(form.total))) return;
+  const {subtotal,total,...fields}=form;
+  const result=await cloudMutate('order.create',{...fields,items:quickOrderDraft.items.map(i=>({productId:i.productId,quantity:i.quantity}))});
+  clearQuickOrderDraft(); renderAll(); playNewOrderSound();
+  const order=findOrder(result.orderId); if(order && printSettings.autoPrintOrders) printKitchenCommand(order);
 }
 
-function acceptMenuOrder(orderId) {
-  const order = findOrder(orderId);
-  if (!order || order.status !== "awaiting_acceptance") return;
-  const items = getOrderItems(order);
+async function acceptMenuOrder(id){ await cloudMutate('order.accept',{id}); renderAll(); }
 
-  if (!canFulfillItems(items)) {
-    alert("Estoque insuficiente para confirmar esse pedido.");
-    return;
-  }
+async function advanceMenuOrder(id){ await cloudMutate('order.advance',{id}); renderAll(); }
 
-  const sales = [];
-  for (const item of items) {
-    const product = findProduct(item.productId);
-    if (!product) {
-      alert("Produto nao encontrado no cardapio atual.");
-      return;
-    }
-    const sale = createSaleFromProduct(product, item.quantity, item.price, {
-      source: "cardapio",
-      orderId: order.id,
-    });
-    if (sale) sales.push(sale);
-  }
-
-  const now = new Date().toISOString();
-  order.status = "in_production";
-  order.acceptedAt = now;
-  order.confirmedAt = now;
-  order.statusUpdatedAt = now;
-  order.saleId = sales[0]?.id || "";
-  order.saleIds = sales.map((sale) => sale.id);
-  saveState();
-  renderAll();
+async function cancelMenuOrder(id){
+  const reason=await cloudPrompt('Motivo do cancelamento (mínimo 3 caracteres):');
+  if(!reason || !await cloudConfirm('Confirmar cancelamento? O consumo da produção será mantido.')) return;
+  await cloudMutate('order.cancel',{id,reason,note:await cloudPrompt('Observação:','')||''}); renderAll();
 }
 
-function advanceMenuOrder(orderId) {
-  const order = findOrder(orderId);
-  if (!order) return;
-  const nextStatus = getOrderStatus(order.status).next;
-  if (!nextStatus || order.status === "awaiting_acceptance") return;
-
-  const now = new Date().toISOString();
-  order.status = nextStatus;
-  order.statusUpdatedAt = now;
-  if (nextStatus === "ready") order.readyAt = now;
-  if (nextStatus === "dispatching") order.dispatchedAt = now;
-  if (nextStatus === "payment_confirmed") order.paidAt = now;
-  saveState();
-  renderAll();
-}
-
-function cancelMenuOrder(orderId) {
-  const order = findOrder(orderId);
-  if (!order || order.status !== "awaiting_acceptance") return;
-  if (!confirm(`Deseja cancelar o pedido de "${order.productName}"?`)) return;
-  order.status = "canceled";
-  order.statusUpdatedAt = new Date().toISOString();
-  saveState();
-  renderAll();
-}
-
-function registerIngredientRestockFromForm() {
+async function registerIngredientRestockFromForm() {
   const ingredient = findIngredient($("#ingredientId").value);
   const quantity = toNumber($("#ingredientRestockQuantity").value);
   const cost = toNumber($("#ingredientRestockCost").value);
@@ -2753,11 +3238,52 @@ function registerIngredientRestockFromForm() {
   $("#ingredientStock").value = ingredient.stock;
   $("#ingredientRestockQuantity").value = 0;
   $("#ingredientRestockCost").value = 0;
-  saveState();
+  await saveState();
   renderAll();
 }
 
-function deleteIngredient(id) {
+async function registerStockAdjustmentFromForm() {
+  const ingredient = findIngredient($("#ingredientId").value);
+  const quantity = toNumber($("#stockAdjustmentQuantity").value);
+  const type = $("#stockAdjustmentType").value || "ajuste";
+  const reason = $("#stockAdjustmentReason").value.trim();
+
+  if (!ingredient) {
+    alert("Selecione uma materia-prima existente para registrar ajuste.");
+    return;
+  }
+  if (quantity <= 0 || !reason) {
+    alert("Informe quantidade e motivo obrigatorio para o ajuste.");
+    return;
+  }
+  if (ingredient.stock - quantity < -0.000001) {
+    alert("O ajuste deixaria o estoque negativo.");
+    return;
+  }
+
+  ingredient.stock -= quantity;
+  const adjustment = {
+    id: createId(),
+    ingredientId: ingredient.id,
+    ingredientName: ingredient.name,
+    unit: ingredient.unit,
+    type,
+    quantity,
+    reason,
+    date: new Date().toISOString(),
+    user: getCurrentUserName(),
+  };
+  state.stockAdjustments.push(adjustment);
+  recordMovement({ type, ingredient, quantity, source: reason, sourceId: adjustment.id });
+  addAuditLog("Estoque ajustado", `${type} - ${ingredient.name} - ${formatQuantity(quantity, ingredient.unit)} - ${reason}`);
+  $("#ingredientStock").value = ingredient.stock;
+  $("#stockAdjustmentQuantity").value = 0;
+  $("#stockAdjustmentReason").value = "";
+  await saveState();
+  renderAll();
+}
+
+async function deleteIngredient(id) {
   const ingredient = findIngredient(id);
   if (!ingredient) return;
 
@@ -2769,7 +3295,7 @@ function deleteIngredient(id) {
     ? `Excluir "${ingredient.name}" tambem vai remover essa materia-prima da ficha tecnica de: ${linkedNames}. Deseja continuar?`
     : `Deseja excluir "${ingredient.name}" do estoque?`;
 
-  if (!confirm(message)) return;
+  if (!await cloudConfirm(message)) return;
 
   state.ingredients = state.ingredients.filter((item) => item.id !== ingredient.id);
   state.products = state.products.map((product) => ({
@@ -2779,19 +3305,20 @@ function deleteIngredient(id) {
 
   if ($("#ingredientId").value === ingredient.id) resetIngredientForm();
 
-  saveState();
+  await saveState();
   renderAll();
 }
 
-function deleteProduct(id) {
+async function deleteProduct(id) {
   const product = findProduct(id);
   if (!product) return;
 
-  if (!confirm(`Deseja excluir "${product.name}" do cardapio? As vendas antigas continuam no historico.`)) return;
+  if (!await cloudConfirm(`Deseja excluir "${product.name}" do cardapio? As vendas antigas continuam no historico.`)) return;
 
   state.products = state.products.filter((item) => item.id !== product.id);
+  addAuditLog("Produto excluido", product.name);
   if ($("#productId").value === id) resetProductForm();
-  saveState();
+  await saveState();
   renderAll();
 }
 
@@ -2839,14 +3366,14 @@ function validateBackup(data) {
 
 function getBackupMeta() {
   try {
-    return JSON.parse(localStorage.getItem(BACKUP_META_KEY)) || {};
+    return JSON.parse(storageRepository.get(BACKUP_META_KEY)) || {};
   } catch {
     return {};
   }
 }
 
 function saveBackupMeta() {
-  localStorage.setItem(BACKUP_META_KEY, JSON.stringify({ lastBackupAt: new Date().toISOString() }));
+  storageRepository.set(BACKUP_META_KEY, JSON.stringify({ lastBackupAt: new Date().toISOString() }));
 }
 
 function renderBackupWarning() {
@@ -2881,40 +3408,23 @@ function downloadText(filename, text, type) {
   URL.revokeObjectURL(url);
 }
 
-function exportBackup() {
-  const payload = JSON.stringify(normalizeState(state), null, 2);
-  downloadText(`burgerstock-backup-${new Date().toISOString().slice(0, 10)}.json`, payload, "application/json");
-  saveBackupMeta();
-  renderBackupWarning();
+async function exportBackup(){
+  const data=await cloudRequest('/api/backup');
+  downloadText('pjotabuguer-backup-'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify(data,null,2),'application/json');
+  saveBackupMeta();renderBackupWarning();
 }
 
-function importBackupFile(file) {
-  const reader = new FileReader();
-  reader.addEventListener("load", () => {
-    try {
-      const parsed = JSON.parse(String(reader.result));
-      if (!validateBackup(parsed)) {
-        alert("Backup invalido. O arquivo precisa conter ingredients, products, purchases e sales.");
-        return;
-      }
-      if (!confirm("Importar este backup vai substituir todos os dados atuais. Deseja continuar?")) return;
-      state = normalizeState(parsed);
-      saveState();
-      resetSaleForm();
-      resetPurchaseForm();
-      resetProductForm();
-      resetIngredientForm();
-      renderAll();
-      alert("Backup importado com sucesso.");
-    } catch {
-      alert("Nao foi possivel ler o arquivo JSON.");
-    }
-  });
-  reader.readAsText(file);
+async function importBackupFile(file){
+  const parsed=JSON.parse(await file.text());
+  if(!validateBackup(parsed)) throw new Error('Backup inválido.');
+  if(!await cloudConfirm('Restaurar este backup no servidor? A versão atual ficará no histórico de recuperação.'))return;
+  await cloudMutate('state.import',normalizeState(parsed)); renderAll();
+  alert('Backup confirmado no servidor e disponível nos outros dispositivos.');
 }
 
 function csvEscape(value) {
-  const text = String(value ?? "");
+  const raw = String(value ?? "");
+  const text = typeof value === "string" && /^[\s]*[=+@-]/.test(raw) ? "\'" + raw : raw;
   return `"${text.replace(/"/g, '""')}"`;
 }
 
@@ -3017,61 +3527,11 @@ function bindEvents() {
     button.addEventListener("click", () => activateTab(button.dataset.goTab));
   });
 
-  $("#setupForm").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const name = $("#setupName").value.trim();
-    const email = normalizeEmail($("#setupEmail").value);
-    const password = $("#setupPassword").value;
-    const passwordError = validatePassword(password);
+  $("#setupForm").addEventListener("submit", async(event)=>{event.preventDefault();await authSubmit('/api/auth/setup',{name:$('#setupName').value,email:$('#setupEmail').value,password:$('#setupPassword').value,setupKey:$('#setupKey').value},'#setupMessage');});
 
-    if (!name || !email) return;
-    if (authState.users.length > 0) {
-      $("#setupMessage").textContent = "O administrador inicial ja foi criado.";
-      renderAuthGate();
-      return;
-    }
-    if (passwordError) {
-      $("#setupMessage").textContent = passwordError;
-      return;
-    }
+  $("#loginForm").addEventListener("submit", async(event)=>{event.preventDefault();await authSubmit('/api/auth/login',{email:$('#loginEmail').value,password:$('#loginPassword').value},'#loginMessage');});
 
-    const passwordRecord = await buildPasswordRecord(password);
-    const user = {
-      id: createId(),
-      name,
-      email,
-      role: "admin",
-      ...passwordRecord,
-      createdAt: new Date().toISOString(),
-    };
-    authState.users.push(user);
-    saveAuthState();
-    saveSession(user);
-    $("#setupForm").reset();
-    renderAll();
-  });
-
-  $("#loginForm").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const email = normalizeEmail($("#loginEmail").value);
-    const password = $("#loginPassword").value;
-    const user = findUserByEmail(email);
-
-    if (!user || (await hashPassword(password, user.salt)) !== user.passwordHash) {
-      $("#loginMessage").textContent = "Email ou senha incorretos.";
-      return;
-    }
-
-    saveSession(user);
-    $("#loginForm").reset();
-    $("#loginMessage").textContent = "";
-    renderAll();
-  });
-
-  $("#logoutButton").addEventListener("click", () => {
-    clearSession();
-    renderAuthGate();
-  });
+  $("#logoutButton").addEventListener("click", async()=>{if(cloud.pending && !await cloudConfirm('Há uma operação não confirmada. Exporte o rascunho antes de sair. Sair mesmo assim?'))return;await cloudRequest('/api/logout',{});sessionStorage.removeItem('pjota.pending.'+currentSession?.userId);cloud.pending=null;clearSession();await cloudBoot();});
 
   $("#menuOrderSearch").addEventListener("input", () => {
     menuFilter.query = $("#menuOrderSearch").value;
@@ -3081,6 +3541,11 @@ function bindEvents() {
   $("#menuOrderStatusFilter").addEventListener("change", () => {
     menuFilter.status = $("#menuOrderStatusFilter").value;
     renderDigitalMenu();
+  });
+
+  $("#customerSearch").addEventListener("input", () => {
+    customerFilter.query = $("#customerSearch").value;
+    renderCustomers();
   });
 
   $("#autoPrintOrders").addEventListener("change", () => {
@@ -3095,6 +3560,9 @@ function bindEvents() {
   });
 
   $("#cashDate").addEventListener("change", renderCashClosing);
+  $("#openCashButton").addEventListener("click", openCash);
+  $("#registerCashAdjustment").addEventListener("click", registerCashAdjustment);
+  $("#closeCashButton").addEventListener("click", closeCash);
 
   $("#financePeriodMode").addEventListener("change", () => {
     reportFilter.mode = $("#financePeriodMode").value;
@@ -3117,7 +3585,7 @@ function bindEvents() {
   });
   $("#cashConferenceNote").addEventListener("input", () => renderCashConference());
 
-  $("#expenseForm").addEventListener("submit", (event) => {
+  $("#expenseForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const expenseId = $("#expenseId").value;
     const category = $("#expenseCategory").value;
@@ -3138,6 +3606,7 @@ function bindEvents() {
       expense.amount = amount;
       expense.date = date;
       expense.updatedAt = new Date().toISOString();
+      addAuditLog("Despesa alterada", `${description} - ${currency.format(amount)}`);
     } else {
       state.expenses.push({
         id: createId(),
@@ -3147,13 +3616,30 @@ function bindEvents() {
         date,
         updatedAt: "",
       });
+      addAuditLog("Despesa criada", `${description} - ${currency.format(amount)}`);
     }
 
     resetExpenseForm();
-    saveState();
+    await saveState();
     renderAll();
   });
   $("#cancelExpenseEdit").addEventListener("click", resetExpenseForm);
+
+  $("#settingsForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    state.settings = normalizeSettings({
+      companyName: $("#settingCompanyName").value.trim(),
+      address: $("#settingAddress").value.trim(),
+      phone: $("#settingPhone").value.trim(),
+      whatsapp: $("#settingWhatsapp").value.trim(),
+      defaultDeliveryFee: toNumber($("#settingDefaultDeliveryFee").value),
+      logoUrl: $("#settingLogoUrl").value.trim(),
+      printMessage: $("#settingPrintMessage").value.trim(),
+    });
+    addAuditLog("Configuracoes alteradas", state.settings.companyName);
+    await saveState();
+    renderAll();
+  });
 
   $("#periodMode").addEventListener("change", () => {
     reportFilter.mode = $("#periodMode").value;
@@ -3172,7 +3658,7 @@ function bindEvents() {
     renderAll();
   });
 
-  $("#ingredientForm").addEventListener("submit", (event) => {
+  $("#ingredientForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const ingredientId = $("#ingredientId").value;
     const name = $("#ingredientName").value.trim();
@@ -3210,14 +3696,15 @@ function bindEvents() {
     }
 
     resetIngredientForm();
-    saveState();
+    await saveState();
     renderAll();
   });
 
   $("#cancelIngredientEdit").addEventListener("click", resetIngredientForm);
   $("#registerIngredientRestock").addEventListener("click", registerIngredientRestockFromForm);
+  $("#registerStockAdjustment").addEventListener("click", registerStockAdjustmentFromForm);
 
-  $("#purchaseForm").addEventListener("submit", (event) => {
+  $("#purchaseForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const purchaseId = $("#purchaseId").value;
     const ingredient = findIngredient($("#purchaseIngredient").value);
@@ -3233,7 +3720,7 @@ function bindEvents() {
     }
 
     resetPurchaseForm();
-    saveState();
+    await saveState();
     renderAll();
   });
 
@@ -3250,7 +3737,7 @@ function bindEvents() {
   });
   $("#addRecipeSearchLine").addEventListener("click", () => addRecipeLineFromQuickAdd());
 
-  $("#productForm").addEventListener("submit", (event) => {
+  $("#productForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const productId = $("#productId").value;
     const name = $("#productName").value.trim();
@@ -3290,6 +3777,7 @@ function bindEvents() {
       product.featured = featured;
       product.sortOrder = sortOrder;
       product.recipe = recipe;
+      addAuditLog("Produto editado", name);
     } else {
       state.products.push({
         id: createId(),
@@ -3304,10 +3792,11 @@ function bindEvents() {
         price,
         recipe,
       });
+      addAuditLog("Produto criado", name);
     }
 
     resetProductForm();
-    saveState();
+    await saveState();
     renderAll();
   });
 
@@ -3321,7 +3810,7 @@ function bindEvents() {
 
   $("#saleQuantity").addEventListener("input", updateSaleHint);
 
-  $("#saleForm").addEventListener("submit", (event) => {
+  $("#saleForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const saleId = $("#saleId").value;
     const saleBeingEdited = saleId ? findSale(saleId) : null;
@@ -3351,89 +3840,33 @@ function bindEvents() {
       saleBeingEdited.cmvTotal = saleDraft.cmvTotal;
       saleBeingEdited.grossProfit = saleDraft.grossProfit;
       saleBeingEdited.updatedAt = new Date().toISOString();
+      addAuditLog("Venda editada", `${product.name} - ${quantity} un`);
     } else {
       createSaleFromProduct(product, quantity, price);
     }
 
     resetSaleForm();
-    saveState();
+    await saveState();
     renderAll();
   });
 
   $("#cancelSaleEdit").addEventListener("click", resetSaleForm);
 
-  $("#userForm").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    if (!isAdmin()) return;
-
-    const userId = $("#userId").value;
-    const name = $("#userName").value.trim();
-    const email = normalizeEmail($("#userEmail").value);
-    const role = $("#userRole").value === "admin" ? "admin" : "operator";
-    const password = $("#userPassword").value;
-    const userBeingEdited = userId ? findUser(userId) : null;
-
-    $("#userMessage").textContent = "";
-
-    if (!name || !email) {
-      $("#userMessage").textContent = "Informe nome e email.";
-      return;
-    }
-    if (hasUserEmailConflict(email, userId)) {
-      $("#userMessage").textContent = "Ja existe usuario com esse email.";
-      return;
-    }
-    if (!userBeingEdited || password) {
-      const passwordError = validatePassword(password);
-      if (passwordError) {
-        $("#userMessage").textContent = passwordError;
-        return;
-      }
-    }
-
-    if (userBeingEdited) {
-      const currentUser = getCurrentUser();
-      const adminCount = authState.users.filter((user) => user.role === "admin").length;
-      if (userBeingEdited.role === "admin" && role !== "admin" && adminCount <= 1) {
-        $("#userMessage").textContent = "Mantenha pelo menos um administrador ativo.";
-        return;
-      }
-
-      userBeingEdited.name = name;
-      userBeingEdited.email = email;
-      userBeingEdited.role = role;
-      userBeingEdited.updatedAt = new Date().toISOString();
-      if (password) Object.assign(userBeingEdited, await buildPasswordRecord(password));
-      if (currentUser?.id === userBeingEdited.id) saveSession(userBeingEdited);
-    } else {
-      authState.users.push({
-        id: createId(),
-        name,
-        email,
-        role,
-        ...(await buildPasswordRecord(password)),
-        createdAt: new Date().toISOString(),
-      });
-    }
-
-    saveAuthState();
-    resetUserForm();
-    renderAll();
-  });
+  $("#userForm").addEventListener("submit", async(event)=>{event.preventDefault();const data={name:$('#userName').value,email:$('#userEmail').value,role:$('#userRole').value};if($('#userId').value)data.id=$('#userId').value;if($('#userPassword').value)data.password=$('#userPassword').value;try{const result=await cloudRequest('/api/users',data);resetUserForm();if(result.reauthenticate){clearSession();await cloudBoot();}else await cloudRefresh(true);}catch(e){$('#userMessage').textContent=e.message;}});
 
   $("#cancelUserEdit").addEventListener("click", resetUserForm);
 
-  $("#seedData").addEventListener("click", () => {
+  $("#seedData").addEventListener("click", async () => {
     state = normalizeState(exampleState);
-    saveState();
+    await saveState();
     resetProductForm();
     renderAll();
   });
 
-  $("#clearData").addEventListener("click", () => {
-    if (!confirm("Deseja apagar todos os dados cadastrados?")) return;
+  $("#clearData").addEventListener("click", async () => {
+    if (!await cloudConfirm("Deseja apagar todos os dados cadastrados?")) return;
     state = clone(defaultState);
-    localStorage.removeItem(STORAGE_KEY);
+    await saveState();
     resetProductForm();
     resetSaleForm();
     resetPurchaseForm();
@@ -3457,5 +3890,6 @@ function bindEvents() {
 bindEvents();
 addRecipeLine();
 resetExpenseForm();
-renderAll();
+cloudBoot();
+setInterval(() => cloudRefresh().catch(() => {}), 5000);
 setInterval(renderKitchen, 15000);
