@@ -1442,12 +1442,18 @@ function activateTab(tabId) {
     targetButton.classList.add("active");
   }
   targetPanel.classList.add("active");
+  if (['inventory', 'purchases', 'movements'].includes(tabId)) {
+    const stockButton = document.querySelector('.tab-button[data-tab="inventory"]');
+    stockButton.classList.add('active');
+    targetButton?.removeAttribute('aria-current');
+  }
   document.querySelectorAll('.tab-button').forEach(button => {
-    if (button === targetButton) button.setAttribute('aria-current', 'page');
+    if (button === targetButton || (['purchases', 'movements'].includes(tabId) && button.dataset.tab === 'inventory')) button.setAttribute('aria-current', 'page');
     else button.removeAttribute('aria-current');
   });
   const pageTitle = document.getElementById('pageTitle');
   if (pageTitle && targetButton) pageTitle.textContent = targetButton.textContent.trim();
+  if (pageTitle && ['inventory', 'purchases', 'movements'].includes(tabId)) pageTitle.textContent = 'Estoque';
   document.dispatchEvent(new CustomEvent('pjota:navigate', { detail: tabId }));
 }
 
@@ -1585,37 +1591,41 @@ function renderDashboard() {
 }
 
 function renderInventory() {
-  $("#inventoryTable").innerHTML =
-    state.ingredients
-      .map((item) => {
-        const status = getStockStatus(item);
-        return `<tr>
-          <td>${escapeHtml(item.name)}</td>
-          <td>${formatQuantity(item.stock, item.unit)}</td>
-          <td>${formatQuantity(item.min, item.unit)}</td>
-          <td><span class="badge ${status.className}">${status.label}</span></td>
-          <td>
-            <div class="row-actions">
-              <button class="ghost-button edit-ingredient" type="button" data-id="${escapeHtml(item.id)}">Editar</button>
-              <button class="ghost-button restock-ingredient" type="button" data-id="${escapeHtml(item.id)}">Repor</button>
-              <button class="danger-button delete-ingredient" type="button" data-id="${escapeHtml(item.id)}">Excluir</button>
-            </div>
-          </td>
-        </tr>`;
-      })
-      .join("") || `<tr><td colspan="5" class="empty">Cadastre ingredientes para iniciar o estoque.</td></tr>`;
-
-  $$(".edit-ingredient").forEach((button) => {
-    button.addEventListener("click", () => startIngredientEdit(button.dataset.id));
+  const search = ($('#stockSearch').value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR').trim();
+  const filter = $('#stockFilter').value;
+  const items = state.ingredients.filter(item => {
+    const name = item.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');
+    return name.includes(search) && (filter === 'all' || inventoryPresentation(item).key === filter);
   });
-
-  $$(".restock-ingredient").forEach((button) => {
-    button.addEventListener("click", () => startIngredientRestock(button.dataset.id));
-  });
-
-  $$(".delete-ingredient").forEach((button) => {
-    button.addEventListener("click", () => deleteIngredient(button.dataset.id));
-  });
+  $('#stockEmptyCount').textContent = state.ingredients.filter(item => inventoryPresentation(item).key === 'empty').length;
+  $('#stockLowCount').textContent = state.ingredients.filter(item => inventoryPresentation(item).key === 'low').length;
+  $('#stockResultCount').textContent = `${items.length} de ${state.ingredients.length} ingredientes`;
+  $('#inventoryTable').innerHTML = items.map(item => {
+    const status = inventoryPresentation(item);
+    return `<tr>
+      <td data-label="Ingrediente"><strong>${escapeHtml(item.name)}</strong><small>Unidade: ${escapeHtml(item.unit)}</small></td>
+      <td data-label="Saldo disponível" class="stock-balance">${formatQuantity(item.stock, item.unit)}</td>
+      <td data-label="Estoque mínimo">${item.min > 0 ? formatQuantity(item.min, item.unit) : 'Não definido'}</td>
+      <td data-label="Situação"><span class="badge ${status.className}">${status.label}</span></td>
+      <td data-label="Ações"><div class="row-actions">
+        <button class="stock-restock restock-ingredient" type="button" data-id="${escapeHtml(item.id)}" aria-label="Repor ${escapeHtml(item.name)}">+ Repor</button>
+        <details class="stock-options"><summary aria-label="Mais opções para ${escapeHtml(item.name)}">Mais <span aria-hidden="true">⋯</span></summary><div>
+          <button class="ghost-button edit-ingredient" type="button" data-id="${escapeHtml(item.id)}">Editar ingrediente</button>
+          <button class="ghost-button adjust-ingredient" type="button" data-id="${escapeHtml(item.id)}">Ajuste / perda</button>
+          <button class="danger-button delete-ingredient" type="button" data-id="${escapeHtml(item.id)}">Excluir ingrediente</button>
+        </div></details>
+      </div></td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="5" class="stock-empty"><strong>${state.ingredients.length ? 'Nenhum ingrediente encontrado' : 'Seu estoque começa aqui'}</strong><p>${state.ingredients.length ? 'Tente outro nome ou selecione todos os status.' : 'Cadastre os ingredientes da sua cozinha. Depois, use Repor para registrar as compras.'}</p></td></tr>`;
+  $$('.edit-ingredient').forEach(button => button.addEventListener('click', () => startIngredientEdit(button.dataset.id)));
+  $$('.restock-ingredient').forEach(button => button.addEventListener('click', () => startIngredientRestock(button.dataset.id)));
+  $$('.adjust-ingredient').forEach(button => button.addEventListener('click', () => {
+    const ingredient = findIngredient(button.dataset.id);
+    if (!ingredient) return;
+    resetIngredientForm(); $('#ingredientId').value = ingredient.id;
+    openStockDialog('adjustmentDialog', ingredient);
+  }));
+  $$('.delete-ingredient').forEach(button => button.addEventListener('click', () => deleteIngredient(button.dataset.id)));
 }
 
 function renderProducts() {
@@ -2953,7 +2963,7 @@ function startPurchaseEdit(id) {
   const purchase = findPurchase(id);
   if (!purchase) return;
 
-  document.querySelector('[data-tab="purchases"]').click();
+  activateTab("purchases");
   $("#purchaseId").value = purchase.id;
   $("#purchaseIngredient").value = purchase.ingredientId;
   $("#purchaseQuantity").value = purchase.quantity;
@@ -2961,6 +2971,7 @@ function startPurchaseEdit(id) {
   $("#purchaseFormTitle").textContent = "Editar compra";
   $("#purchaseSubmit").textContent = "Salvar alteracoes";
   $("#cancelPurchaseEdit").classList.remove("hidden");
+  openStockDialog("purchaseDialog");
   $("#purchaseQuantity").focus();
 }
 
@@ -3014,6 +3025,7 @@ function resetIngredientForm() {
   $("#ingredientRestockQuantity").value = 0;
   $("#ingredientRestockCost").value = 0;
   $("#stockAdjustmentQuantity").value = 0;
+  $("#stockAdjustmentType").value = "ajuste";
   $("#stockAdjustmentReason").value = "";
   $("#ingredientFormTitle").textContent = "Novo ingrediente";
   $("#ingredientSubmit").textContent = "Adicionar ingrediente";
@@ -3037,6 +3049,7 @@ function startIngredientEdit(id) {
   $("#ingredientSubmit").textContent = "Salvar alteracoes";
   $("#cancelIngredientEdit").classList.remove("hidden");
   document.querySelector('[data-tab="inventory"]').click();
+  openStockDialog("ingredientDialog");
   $("#ingredientName").focus();
 }
 
@@ -3044,8 +3057,9 @@ function startIngredientRestock(id) {
   const ingredient = findIngredient(id);
   if (!ingredient) return;
 
-  startIngredientEdit(id);
-  $("#ingredientRestockQuantity").focus();
+  resetIngredientForm();
+  $("#ingredientId").value = ingredient.id;
+  openStockDialog("restockDialog", ingredient);
 }
 
 function resetUserForm() {
@@ -3232,20 +3246,20 @@ async function registerIngredientRestockFromForm() {
   const cost = toNumber($("#ingredientRestockCost").value);
 
   if (!ingredient) {
-    alert("Selecione uma materia-prima existente para registrar reposicao.");
+    stockFormError("restockDialog", "Selecione um ingrediente existente para registrar a reposição.");
     return;
   }
 
   if (quantity <= 0 || cost <= 0) {
-    alert("Informe a quantidade comprada e o valor pago para registrar a reposicao.");
+    stockFormError("restockDialog", "Informe quantidade e valor pago maiores que zero.");
     return;
   }
 
   createPurchase(ingredient, quantity, cost);
   $("#ingredientStock").value = ingredient.stock;
+  if (!await saveStockDialog("restockDialog", "Reposição confirmada. A compra e a entrada no estoque foram registradas.")) return;
   $("#ingredientRestockQuantity").value = 0;
   $("#ingredientRestockCost").value = 0;
-  await saveState();
   renderAll();
 }
 
@@ -3256,15 +3270,15 @@ async function registerStockAdjustmentFromForm() {
   const reason = $("#stockAdjustmentReason").value.trim();
 
   if (!ingredient) {
-    alert("Selecione uma materia-prima existente para registrar ajuste.");
+    stockFormError("adjustmentDialog", "Selecione uma materia-prima existente para registrar ajuste.");
     return;
   }
   if (quantity <= 0 || !reason) {
-    alert("Informe quantidade e motivo obrigatorio para o ajuste.");
+    stockFormError("adjustmentDialog", "Informe quantidade e motivo obrigatorio para o ajuste.");
     return;
   }
   if (ingredient.stock - quantity < -0.000001) {
-    alert("O ajuste deixaria o estoque negativo.");
+    stockFormError("adjustmentDialog", "O ajuste deixaria o estoque negativo.");
     return;
   }
 
@@ -3284,9 +3298,9 @@ async function registerStockAdjustmentFromForm() {
   recordMovement({ type, ingredient, quantity, source: reason, sourceId: adjustment.id });
   addAuditLog("Estoque ajustado", `${type} - ${ingredient.name} - ${formatQuantity(quantity, ingredient.unit)} - ${reason}`);
   $("#ingredientStock").value = ingredient.stock;
+  if (!await saveStockDialog("adjustmentDialog", "Ajuste confirmado no estoque.")) return;
   $("#stockAdjustmentQuantity").value = 0;
   $("#stockAdjustmentReason").value = "";
-  await saveState();
   renderAll();
 }
 
@@ -3313,6 +3327,7 @@ async function deleteIngredient(id) {
   if ($("#ingredientId").value === ingredient.id) resetIngredientForm();
 
   await saveState();
+  stockNotice("Ingrediente excluído. As alterações foram confirmadas no servidor.");
   renderAll();
 }
 
@@ -3675,7 +3690,7 @@ function bindEvents() {
 
     if (!name) return;
     if (hasNameConflict(state.ingredients, name, ingredientId)) {
-      alert("Ja existe uma materia-prima com esse nome. Edite o item existente ou escolha outro nome.");
+      stockFormError("ingredientDialog", "Já existe um ingrediente com esse nome. Edite o item existente ou escolha outro nome.");
       return;
     }
 
@@ -3690,7 +3705,7 @@ function bindEvents() {
           state.sales.some((sale) => getSaleRecipe(sale).some((line) => line.ingredientId === ingredient.id)) ||
           state.movements.some((movement) => movement.ingredientId === ingredient.id));
       if (isUnitInUse) {
-        alert("Nao e possivel alterar a unidade de um ingrediente que ja possui ficha tecnica, compra, venda ou movimentacao. Crie um novo ingrediente se precisar usar outra unidade.");
+        stockFormError("ingredientDialog", "A unidade não pode ser alterada porque o ingrediente já possui registros vinculados. Crie outro ingrediente para usar uma unidade diferente.");
         return;
       }
       ingredient.name = name;
@@ -3702,12 +3717,12 @@ function bindEvents() {
       state.ingredients.push(ingredient);
     }
 
+    if (!await saveStockDialog("ingredientDialog", "Ingrediente salvo no servidor.")) return;
     resetIngredientForm();
-    await saveState();
     renderAll();
   });
 
-  $("#cancelIngredientEdit").addEventListener("click", resetIngredientForm);
+  $("#cancelIngredientEdit").addEventListener("click", () => { resetIngredientForm(); $("#ingredientDialog").close(); });
   $("#registerIngredientRestock").addEventListener("click", registerIngredientRestockFromForm);
   $("#registerStockAdjustment").addEventListener("click", registerStockAdjustmentFromForm);
 
@@ -3726,12 +3741,12 @@ function bindEvents() {
       createPurchase(ingredient, quantity, cost);
     }
 
+    if (!await saveStockDialog("purchaseDialog", "Compra salva no servidor.")) return;
     resetPurchaseForm();
-    await saveState();
     renderAll();
   });
 
-  $("#cancelPurchaseEdit").addEventListener("click", resetPurchaseForm);
+  $("#cancelPurchaseEdit").addEventListener("click", () => { resetPurchaseForm(); $("#purchaseDialog").close(); });
 
   $("#addRecipeLine").addEventListener("click", () => addRecipeLine());
   $("#recipeIngredientSearch").addEventListener("input", renderRecipeSearchResults);

@@ -264,40 +264,9 @@
           </div>
         </section>
 
-        <section id="purchases" class="tab-panel">
-          <section class="panel filter-panel">
-            <div class="panel-header">
-              <h2>Central de estoque</h2>
-            </div>
-            <div class="export-actions">
-              <button class="ghost-button" type="button" data-go-tab="inventory">Ingredientes</button>
-              <button class="ghost-button" type="button" data-go-tab="purchases">Compras</button>
-              <button class="ghost-button" type="button" data-go-tab="movements">Movimentacoes</button>
-            </div>
-          </section>
-          <div class="grid-two">
-            <form id="purchaseForm" class="panel form-panel">
-              <div class="panel-header">
-                <h2 id="purchaseFormTitle">Registrar compra</h2>
-              </div>
-              <input id="purchaseId" type="hidden" />
-              <label>
-                Ingrediente
-                <select id="purchaseIngredient" required></select>
-              </label>
-              <label>
-                Quantidade comprada
-                <input id="purchaseQuantity" type="number" min="0.01" step="0.01" required />
-              </label>
-              <label>
-                Custo total
-                <input id="purchaseCost" type="number" min="0" step="0.01" required />
-              </label>
-              <div class="form-actions">
-                <button id="purchaseSubmit" type="submit">Salvar compra</button>
-                <button id="cancelPurchaseEdit" class="ghost-button hidden" type="button">Cancelar edicao</button>
-              </div>
-            </form>
+        <section id="purchases" class="tab-panel stock-workspace"><div class="stock-heading"><div><p class="stock-kicker">ESTOQUE</p><h2>Compras</h2><p>Registre entradas e acompanhe o valor investido em ingredientes.</p></div><button id="newPurchase" type="button" class="stock-primary">+ Registrar compra</button></div><nav class="stock-tabs" aria-label="Áreas do estoque"><button type="button" data-go-tab="inventory">Ingredientes</button><button type="button" data-go-tab="purchases" aria-current="page">Compras</button><button type="button" data-go-tab="movements">Movimentações</button></nav><p class="stock-notice hidden" role="status" aria-live="polite"></p>
+          <div class="stock-history">
+
 
             <section class="panel">
               <div class="panel-header">
@@ -321,106 +290,15 @@
           </div>
         </section>
 
-        <section id="inventory" class="tab-panel">
-          <section class="panel filter-panel">
-            <div class="panel-header">
-              <h2>Central de estoque</h2>
-            </div>
-            <div class="export-actions">
-              <button class="ghost-button" type="button" data-go-tab="inventory">Ingredientes</button>
-              <button class="ghost-button" type="button" data-go-tab="purchases">Compras</button>
-              <button class="ghost-button" type="button" data-go-tab="movements">Movimentacoes</button>
-            </div>
+        <section id="inventory" class="tab-panel stock-workspace">
+          <div class="stock-heading"><div><p class="stock-kicker">CONTROLE DE INSUMOS</p><h2>Ingredientes da cozinha</h2><p>Confira o que precisa de atenção e mantenha a cozinha abastecida.</p></div><button id="newIngredient" class="stock-primary" type="button">+ Novo ingrediente</button></div>
+          <nav class="stock-tabs" aria-label="Áreas do estoque"><button type="button" data-go-tab="inventory" aria-current="page">Ingredientes</button><button type="button" data-go-tab="purchases">Compras</button><button type="button" data-go-tab="movements">Movimentações</button></nav>
+          <div class="stock-metrics"><div><span>Sem estoque</span><strong id="stockEmptyCount">0</strong><small>Precisam de reposição</small></div><div><span>No mínimo ou abaixo</span><strong id="stockLowCount">0</strong><small>Com saldo disponível, mas em atenção</small></div></div>
+          <p id="stockNotice" class="stock-notice hidden" role="status" aria-live="polite"></p>
+          <section class="panel stock-list-panel"><div class="stock-list-heading"><h3>Seus ingredientes</h3><span id="stockResultCount"></span></div>
+            <div class="stock-filters"><label>Buscar ingrediente<input id="stockSearch" type="search" placeholder="Ex.: pão, carne, cheddar" /></label><label>Status<select id="stockFilter"><option value="all">Todos os ingredientes</option><option value="empty">Sem estoque</option><option value="low">No mínimo ou abaixo</option><option value="unset">Mínimo não definido</option><option value="normal">Acima do mínimo</option></select></label></div>
+            <div class="table-wrap"><table class="stock-table"><caption class="sr-only">Ingredientes, saldos e ações de estoque</caption><thead><tr><th scope="col">Ingrediente</th><th scope="col">Saldo disponível</th><th scope="col">Estoque mínimo</th><th scope="col">Situação</th><th scope="col">Ações</th></tr></thead><tbody id="inventoryTable"></tbody></table></div>
           </section>
-          <div class="grid-two">
-            <form id="ingredientForm" class="panel form-panel">
-              <div class="panel-header">
-                <h2 id="ingredientFormTitle">Novo ingrediente</h2>
-              </div>
-              <input id="ingredientId" type="hidden" />
-              <label>
-                Nome
-                <input id="ingredientName" type="text" placeholder="Ex.: Pao brioche" required />
-              </label>
-              <label>
-                Unidade
-                <select id="ingredientUnit">
-                  <option value="un">un</option>
-                  <option value="g">g</option>
-                  <option value="kg">kg</option>
-                  <option value="ml">ml</option>
-                  <option value="l">l</option>
-                </select>
-              </label>
-              <label>
-                Saldo atual
-                <input id="ingredientStock" type="number" min="0" step="0.01" value="0" required />
-              </label>
-              <label>
-                Estoque minimo
-                <input id="ingredientMin" type="number" min="0" step="0.01" value="0" required />
-              </label>
-              <div class="recipe-preview compact">
-                <strong>Reposicao / investimento</strong>
-                <small>Use quando comprar materia-prima. A quantidade sera somada ao saldo e o valor entra no CMV.</small>
-                <label>
-                  Quantidade comprada
-                  <input id="ingredientRestockQuantity" type="number" min="0" step="0.01" value="0" />
-                </label>
-                <label>
-                  Valor pago nessa compra
-                  <input id="ingredientRestockCost" type="number" min="0" step="0.01" value="0" />
-                </label>
-                <button id="registerIngredientRestock" class="ghost-button" type="button">Registrar reposicao</button>
-              </div>
-              <div class="recipe-preview compact">
-                <strong>Ajuste manual / perda</strong>
-                <small>Use para perda, quebra, vencimento ou correcao. O motivo e obrigatorio.</small>
-                <label>
-                  Tipo
-                  <select id="stockAdjustmentType">
-                    <option value="ajuste">Ajuste</option>
-                    <option value="perda">Perda</option>
-                    <option value="quebra">Quebra</option>
-                    <option value="vencimento">Vencimento</option>
-                  </select>
-                </label>
-                <label>
-                  Quantidade a remover
-                  <input id="stockAdjustmentQuantity" type="number" min="0" step="0.01" value="0" />
-                </label>
-                <label>
-                  Motivo
-                  <input id="stockAdjustmentReason" type="text" placeholder="Ex.: produto vencido" />
-                </label>
-                <button id="registerStockAdjustment" class="ghost-button" type="button">Registrar ajuste</button>
-              </div>
-              <div class="form-actions">
-                <button id="ingredientSubmit" type="submit">Adicionar ingrediente</button>
-                <button id="cancelIngredientEdit" class="ghost-button hidden" type="button">Cancelar edicao</button>
-              </div>
-            </form>
-
-            <section class="panel">
-              <div class="panel-header">
-                <h2>Estoque atual</h2>
-              </div>
-              <div class="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Ingrediente</th>
-                      <th>Saldo</th>
-                      <th>Minimo</th>
-                      <th>Status</th>
-                      <th>Acoes</th>
-                    </tr>
-                  </thead>
-                  <tbody id="inventoryTable"></tbody>
-                </table>
-              </div>
-            </section>
-          </div>
         </section>
 
         <section id="products" class="tab-panel">
@@ -820,17 +698,7 @@
           </section>
         </section>
 
-        <section id="movements" class="tab-panel admin-only hidden">
-          <section class="panel filter-panel">
-            <div class="panel-header">
-              <h2>Central de estoque</h2>
-            </div>
-            <div class="export-actions">
-              <button class="ghost-button" type="button" data-go-tab="inventory">Ingredientes</button>
-              <button class="ghost-button" type="button" data-go-tab="purchases">Compras</button>
-              <button class="ghost-button" type="button" data-go-tab="movements">Movimentacoes</button>
-            </div>
-          </section>
+        <section id="movements" class="tab-panel stock-workspace admin-only hidden"><div class="stock-heading"><div><p class="stock-kicker">ESTOQUE</p><h2>Movimentações</h2><p>Consulte entradas, consumo e ajustes do estoque.</p></div></div><nav class="stock-tabs" aria-label="Áreas do estoque"><button type="button" data-go-tab="inventory">Ingredientes</button><button type="button" data-go-tab="purchases">Compras</button><button type="button" data-go-tab="movements" aria-current="page">Movimentações</button></nav>
           <section class="panel">
             <div class="panel-header">
               <h2>Historico de movimentacao de estoque</h2>
@@ -1093,6 +961,95 @@
 
     <dialog id="navigationDialog" class="navigation-dialog" aria-labelledby="navigationTitle"><header><h2 id="navigationTitle">Navegar pela operação</h2><button type="button" class="ghost-button" id="closeNavigation" aria-label="Fechar menu">Fechar ×</button></header></dialog>
     <nav class="mobile-dock hidden" aria-label="Atalhos"><button type="button" data-go-tab="menu">Pedidos</button><button type="button" data-go-tab="kitchen">Cozinha</button><button type="button" data-go-tab="customers">Clientes</button><button type="button" data-open-navigation aria-controls="navigationDialog" aria-haspopup="dialog">☰ Mais</button></nav>
+<dialog id="ingredientDialog" class="stock-dialog" aria-labelledby="ingredientFormTitle">            <form id="ingredientForm" class="form-panel">
+              <div class="panel-header">
+                <h2 id="ingredientFormTitle">Novo ingrediente</h2>
+              </div>
+              <input id="ingredientId" type="hidden" />
+              <label>
+                Nome
+                <input id="ingredientName" type="text" placeholder="Ex.: Pao brioche" required />
+              </label>
+              <label>
+                Unidade
+                <select id="ingredientUnit">
+                  <option value="un">un</option>
+                  <option value="g">g</option>
+                  <option value="kg">kg</option>
+                  <option value="ml">ml</option>
+                  <option value="l">l</option>
+                </select>
+              </label>
+              <label>
+                Saldo inicial / atual
+                <input id="ingredientStock" type="number" min="0" step="0.01" value="0" required />
+              </label>
+              <label>
+                Estoque mínimo
+                <input id="ingredientMin" type="number" min="0" step="0.01" value="0" required />
+              </label>
+              <p class="hint">Para registrar uma compra, use Repor. Alterar o saldo aqui mantém o ajuste direto disponível no cadastro.</p><p class="stock-form-message" role="alert"></p><div class="form-actions">
+                <button id="ingredientSubmit" type="submit">Adicionar ingrediente</button>
+                <button id="cancelIngredientEdit" class="ghost-button hidden" type="button">Cancelar edicao</button>
+              </div>
+            <button type="button" class="ghost-button" data-close-stock>Fechar</button></form></dialog><dialog id="restockDialog" class="stock-dialog" aria-labelledby="restockTitle"><h2 id="restockTitle">Repor ingrediente</h2><p class="stock-selected-item"></p>              <div class="stock-dialog-body">
+                <strong>Reposicao / investimento</strong>
+                <small>A quantidade será somada ao saldo e o valor será registrado na compra.</small>
+                <label>
+                  Quantidade comprada
+                  <input id="ingredientRestockQuantity" type="number" min="0" step="0.01" value="0" />
+                </label>
+                <label>
+                  Valor pago (R$)
+                  <input id="ingredientRestockCost" type="number" min="0" step="0.01" value="0" />
+                </label>
+                <button id="registerIngredientRestock" class="ghost-button" type="button">Confirmar reposição</button>
+              </div>
+<p class="stock-form-message" role="alert"></p><button type="button" class="ghost-button" data-close-stock>Cancelar</button></dialog><dialog id="adjustmentDialog" class="stock-dialog" aria-labelledby="adjustmentTitle"><h2 id="adjustmentTitle">Ajuste / perda</h2><p class="stock-selected-item"></p>              <div class="stock-dialog-body">
+                <strong>Ajuste manual / perda</strong>
+                <small>Registre perdas, quebras, vencimento ou correções. Informe o motivo.</small>
+                <label>
+                  Tipo
+                  <select id="stockAdjustmentType">
+                    <option value="ajuste">Ajuste</option>
+                    <option value="perda">Perda</option>
+                    <option value="quebra">Quebra</option>
+                    <option value="vencimento">Vencimento</option>
+                  </select>
+                </label>
+                <label>
+                  Quantidade a remover
+                  <input id="stockAdjustmentQuantity" type="number" min="0" step="0.01" value="0" />
+                </label>
+                <label>
+                  Motivo
+                  <input id="stockAdjustmentReason" type="text" placeholder="Ex.: produto vencido" />
+                </label>
+                <button id="registerStockAdjustment" class="ghost-button" type="button">Registrar ajuste</button>
+              </div>
+<p class="stock-form-message" role="alert"></p><button type="button" class="ghost-button" data-close-stock>Cancelar</button></dialog><dialog id="purchaseDialog" class="stock-dialog" aria-labelledby="purchaseFormTitle">            <form id="purchaseForm" class="form-panel">
+              <div class="panel-header">
+                <h2 id="purchaseFormTitle">Registrar compra</h2>
+              </div>
+              <input id="purchaseId" type="hidden" />
+              <label>
+                Ingrediente
+                <select id="purchaseIngredient" required></select>
+              </label>
+              <label>
+                Quantidade comprada
+                <input id="purchaseQuantity" type="number" min="0.01" step="0.01" required />
+              </label>
+              <label>
+                Valor pago (R$)
+                <input id="purchaseCost" type="number" min="0" step="0.01" required />
+              </label>
+              <p class="stock-form-message" role="alert"></p><div class="form-actions">
+                <button id="purchaseSubmit" type="submit">Salvar compra</button>
+                <button id="cancelPurchaseEdit" class="ghost-button hidden" type="button">Cancelar edicao</button>
+              </div>
+            <button type="button" class="ghost-button" data-close-stock>Fechar</button></form></dialog>
+    <script src="services/inventory-ui.js"></script>
     <script src="repositories/storage.repository.js"></script>
     <script src="repositories/customer.repository.js"></script>
     <script src="models/customer.model.js"></script>
