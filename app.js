@@ -1602,12 +1602,12 @@ function renderInventory() {
   $('#stockResultCount').textContent = `${items.length} de ${state.ingredients.length} ingredientes`;
   $('#inventoryTable').innerHTML = items.map(item => {
     const status = inventoryPresentation(item);
-    return `<tr>
-      <td data-label="Ingrediente"><strong>${escapeHtml(item.name)}</strong><small>Unidade: ${escapeHtml(item.unit)}</small></td>
-      <td data-label="Saldo disponível" class="stock-balance">${formatQuantity(item.stock, item.unit)}</td>
-      <td data-label="Estoque mínimo">${item.min > 0 ? formatQuantity(item.min, item.unit) : 'Não definido'}</td>
-      <td data-label="Situação"><span class="badge ${status.className}">${status.label}</span></td>
-      <td data-label="Ações"><div class="row-actions">
+    return `<tr role="row">
+      <td role="cell" data-label="Ingrediente"><strong>${escapeHtml(item.name)}</strong><small>Unidade: ${escapeHtml(item.unit)}</small></td>
+      <td role="cell" data-label="Saldo disponível" class="stock-balance">${formatQuantity(item.stock, item.unit)}</td>
+      <td role="cell" data-label="Estoque mínimo">${item.min > 0 ? formatQuantity(item.min, item.unit) : 'Não definido'}</td>
+      <td role="cell" data-label="Situação"><span class="badge ${status.className}">${status.label}</span></td>
+      <td role="cell" data-label="Ações"><div class="row-actions">
         <button class="stock-restock restock-ingredient" type="button" data-id="${escapeHtml(item.id)}" aria-label="Repor ${escapeHtml(item.name)}">+ Repor</button>
         <details class="stock-options"><summary aria-label="Mais opções para ${escapeHtml(item.name)}">Mais <span aria-hidden="true">⋯</span></summary><div>
           <button class="ghost-button edit-ingredient" type="button" data-id="${escapeHtml(item.id)}">Editar ingrediente</button>
@@ -3255,7 +3255,7 @@ async function registerIngredientRestockFromForm() {
   }
 
   if (quantity <= 0 || cost <= 0) {
-    stockFormError("restockDialog", "Informe quantidade e valor pago maiores que zero.");
+    stockFormError("restockDialog", "Informe quantidade e valor pago maiores que zero.", quantity <= 0 ? "ingredientRestockQuantity" : "ingredientRestockCost");
     return;
   }
 
@@ -3278,11 +3278,11 @@ async function registerStockAdjustmentFromForm() {
     return;
   }
   if (quantity <= 0 || !reason) {
-    stockFormError("adjustmentDialog", "Informe quantidade e motivo obrigatorio para o ajuste.");
+    stockFormError("adjustmentDialog", "Informe uma quantidade maior que zero e o motivo do ajuste.", quantity <= 0 ? "stockAdjustmentQuantity" : "stockAdjustmentReason");
     return;
   }
   if (ingredient.stock - quantity < -0.000001) {
-    stockFormError("adjustmentDialog", "O ajuste deixaria o estoque negativo.");
+    stockFormError("adjustmentDialog", "O ajuste deixaria o estoque negativo. Informe uma quantidade menor ou igual ao saldo disponível.", "stockAdjustmentQuantity");
     return;
   }
 
@@ -3694,7 +3694,7 @@ function bindEvents() {
 
     if (!name) return;
     if (hasNameConflict(state.ingredients, name, ingredientId)) {
-      stockFormError("ingredientDialog", "Já existe um ingrediente com esse nome. Edite o item existente ou escolha outro nome.");
+      stockFormError("ingredientDialog", "Já existe um ingrediente com esse nome. Edite o item existente ou escolha outro nome.", "ingredientName");
       return;
     }
 
@@ -3709,7 +3709,7 @@ function bindEvents() {
           state.sales.some((sale) => getSaleRecipe(sale).some((line) => line.ingredientId === ingredient.id)) ||
           state.movements.some((movement) => movement.ingredientId === ingredient.id));
       if (isUnitInUse) {
-        stockFormError("ingredientDialog", "A unidade não pode ser alterada porque o ingrediente já possui registros vinculados. Crie outro ingrediente para usar uma unidade diferente.");
+        stockFormError("ingredientDialog", "A unidade não pode ser alterada porque o ingrediente já possui registros vinculados. Crie outro ingrediente para usar uma unidade diferente.", "ingredientUnit");
         return;
       }
       ingredient.name = name;

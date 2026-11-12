@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PJ Burguer · Gestão</title>
     <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="services/inventory-accessibility.css" />
     <script src="config/app.config.js"></script>
   </head>
   <body>
@@ -296,9 +297,9 @@
           <nav class="stock-tabs" aria-label="Áreas do estoque"><button type="button" data-go-tab="inventory" aria-current="page">Ingredientes</button><button type="button" data-go-tab="purchases">Compras</button><button type="button" data-go-tab="movements">Movimentações</button></nav>
           <div class="stock-metrics"><div><span>Sem estoque</span><strong id="stockEmptyCount">0</strong><small>Precisam de reposição</small></div><div><span>No mínimo ou abaixo</span><strong id="stockLowCount">0</strong><small>Com saldo disponível, mas em atenção</small></div></div>
           <p id="stockNotice" class="stock-notice hidden" role="status" aria-live="polite"></p>
-          <section class="panel stock-list-panel"><div class="stock-list-heading"><h3>Seus ingredientes</h3><span id="stockResultCount"></span></div>
+          <section class="panel stock-list-panel"><div class="stock-list-heading"><h2 id="stockListTitle">Seus ingredientes</h2><span id="stockResultCount" role="status" aria-live="polite" aria-atomic="true"></span></div>
             <div class="stock-filters"><label>Buscar ingrediente<input id="stockSearch" type="search" placeholder="Ex.: pão, carne, cheddar" /></label><label>Status<select id="stockFilter"><option value="all">Todos os ingredientes</option><option value="empty">Sem estoque</option><option value="low">No mínimo ou abaixo</option><option value="unset">Mínimo não definido</option><option value="normal">Acima do mínimo</option></select></label></div>
-            <div class="table-wrap"><table class="stock-table"><caption class="sr-only">Ingredientes, saldos e ações de estoque</caption><thead><tr><th scope="col">Ingrediente</th><th scope="col">Saldo disponível</th><th scope="col">Estoque mínimo</th><th scope="col">Situação</th><th scope="col">Ações</th></tr></thead><tbody id="inventoryTable"></tbody></table></div>
+            <div class="table-wrap"><table class="stock-table" role="table"><caption class="sr-only">Ingredientes, saldos e ações de estoque</caption><thead><tr><th scope="col">Ingrediente</th><th scope="col">Saldo disponível</th><th scope="col">Estoque mínimo</th><th scope="col">Situação</th><th scope="col">Ações</th></tr></thead><tbody id="inventoryTable"></tbody></table></div>
           </section>
         </section>
 
@@ -967,7 +968,7 @@
               <input id="ingredientId" type="hidden" />
               <label>
                 Nome
-                <input id="ingredientName" type="text" placeholder="Ex.: Pao brioche" required />
+                <input id="ingredientName" type="text" placeholder="Ex.: Pão brioche" required />
               </label>
               <label>
                 Unidade
