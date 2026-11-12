@@ -1442,6 +1442,13 @@ function activateTab(tabId) {
     targetButton.classList.add("active");
   }
   targetPanel.classList.add("active");
+  document.querySelectorAll('.tab-button').forEach(button => {
+    if (button === targetButton) button.setAttribute('aria-current', 'page');
+    else button.removeAttribute('aria-current');
+  });
+  const pageTitle = document.getElementById('pageTitle');
+  if (pageTitle && targetButton) pageTitle.textContent = targetButton.textContent.trim();
+  document.dispatchEvent(new CustomEvent('pjota:navigate', { detail: tabId }));
 }
 
 function renderAll() {
@@ -1704,25 +1711,25 @@ function renderDigitalMenu() {
       </div>
       <div class="quick-order-fields">
         <strong>Dados do pedido</strong>
-        <input id="quickCustomer" type="text" placeholder="Cliente" value="${escapeHtml(form.customerName)}" />
-        <input id="quickPhone" type="tel" placeholder="Telefone" value="${escapeHtml(form.customerPhone)}" />
+        <label>Cliente<input id="quickCustomer" type="text" placeholder="Cliente" value="${escapeHtml(form.customerName)}" /></label>
+        <label>Telefone<input id="quickPhone" type="tel" placeholder="Telefone" value="${escapeHtml(form.customerPhone)}" /></label>
         ${matchedCustomer ? `<div class="customer-match">Cliente recorrente: <strong>${escapeHtml(matchedCustomer.name)}</strong> - ${matchedCustomer.orderCount} pedido(s)</div>` : ""}
         <label class="check-row compact-check"><input id="quickWhatsapp" type="checkbox" ${form.customerWhatsapp ? "checked" : ""} /> WhatsApp</label>
-        <select id="quickDestination">
+        <select id="quickDestination" aria-label="Tipo de atendimento">
           <option value="delivery" ${form.destination === "delivery" ? "selected" : ""}>Entrega</option>
           <option value="table" ${form.destination === "table" ? "selected" : ""}>Mesa</option>
           <option value="pickup" ${form.destination === "pickup" ? "selected" : ""}>Retirada</option>
         </select>
-        <input id="quickAddress" class="${showAddress ? "" : "hidden"}" type="text" placeholder="${addressPlaceholder}" value="${escapeHtml(showAddress ? form.address : "")}" />
-        <select id="quickPayment">
+        <input aria-label="Endereço ou mesa" id="quickAddress" class="${showAddress ? "" : "hidden"}" type="text" placeholder="${addressPlaceholder}" value="${escapeHtml(showAddress ? form.address : "")}" />
+        <select id="quickPayment" aria-label="Forma de pagamento">
           <option value="pix" ${form.paymentMethod === "pix" ? "selected" : ""}>Pix</option>
           <option value="cash" ${form.paymentMethod === "cash" ? "selected" : ""}>Dinheiro</option>
           <option value="card" ${form.paymentMethod === "card" ? "selected" : ""}>Cartao</option>
         </select>
-        <input id="quickDeliveryFee" type="number" min="0" step="0.01" placeholder="Taxa de entrega" value="${form.deliveryFee || ""}" />
-        <input id="quickDiscount" type="number" min="0" step="0.01" placeholder="Desconto" value="${form.discount || ""}" />
-        <input id="quickSurcharge" type="number" min="0" step="0.01" placeholder="Acrescimo" value="${form.surcharge || ""}" />
-        <textarea id="quickNote" rows="3" placeholder="Observacao geral">${escapeHtml(form.note)}</textarea>
+        <label>Taxa de entrega (R$)<input id="quickDeliveryFee" type="number" min="0" step="0.01" placeholder="Taxa de entrega" value="${form.deliveryFee || ""}" /></label>
+        <label>Desconto (R$)<input id="quickDiscount" type="number" min="0" step="0.01" placeholder="Desconto" value="${form.discount || ""}" /></label>
+        <label>Acréscimo (R$)<input id="quickSurcharge" type="number" min="0" step="0.01" placeholder="Acrescimo" value="${form.surcharge || ""}" /></label>
+        <textarea aria-label="Observações do pedido" id="quickNote" rows="3" placeholder="Observacao geral">${escapeHtml(form.note)}</textarea>
       </div>
       <div class="quick-summary">
         <strong>Resumo</strong>

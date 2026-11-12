@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>P'jotabuguer - Registro de Compras e Vendas</title>
+    <title>PJ Burguer · Gestão</title>
     <link rel="stylesheet" href="styles.css" />
     <script src="config/app.config.js"></script>
   </head>
@@ -34,7 +34,7 @@
             <span></span>
           </div>
           <div>
-            <strong>P'jotabuguer</strong>
+            <strong>PJ Burguer</strong>
             <small>Acesso operacional</small>
           </div>
         </div>
@@ -77,7 +77,7 @@
     </section>
 
     <main class="app-shell hidden">
-      <aside class="sidebar">
+      <aside class="sidebar" id="desktopNavigation">
         <div class="brand">
           <div class="brand-mark" aria-hidden="true">
             <span></span>
@@ -85,32 +85,33 @@
             <span></span>
           </div>
           <div>
-            <strong>P'jotabuguer</strong>
+            <strong>PJ Burguer</strong>
             <small>Compra, venda e estoque</small>
           </div>
         </div>
 
-        <nav class="tabs" aria-label="Navegacao principal">
-          <button class="tab-button active admin-only" data-tab="dashboard" type="button">Dashboard</button>
+        <nav class="tabs" aria-label="Navegação principal">
+          <button class="tab-button active admin-only" data-tab="dashboard" type="button">Visão geral</button>
           <button class="tab-button" data-tab="menu" type="button">Pedidos</button>
           <button class="tab-button" data-tab="customers" type="button">Clientes</button>
           <button class="tab-button" data-tab="kitchen" type="button">Cozinha</button>
           <button class="tab-button" data-tab="deliveries" type="button">Entregas</button>
-          <button class="tab-button" data-tab="cardapio" type="button">Cardapio</button>
+          <button class="tab-button" data-tab="cardapio" type="button">Cardápio</button>
           <button class="tab-button admin-only" data-tab="products" type="button">Produtos</button>
           <button class="tab-button admin-only" data-tab="inventory" type="button">Estoque</button>
           <button class="tab-button admin-only" data-tab="finance" type="button">Financeiro</button>
-          <button class="tab-button admin-only" data-tab="reports" type="button">Relatorios</button>
-          <button id="usersTabButton" class="tab-button admin-only hidden" data-tab="users" type="button">Usuarios</button>
-          <button class="tab-button admin-only" data-tab="settings" type="button">Configuracoes</button>
+          <button class="tab-button admin-only" data-tab="reports" type="button">Relatórios</button>
+          <button id="usersTabButton" class="tab-button admin-only hidden" data-tab="users" type="button">Usuários</button>
+          <button class="tab-button admin-only" data-tab="settings" type="button">Configurações</button>
         </nav>
       </aside>
 
       <section class="content">
         <header class="topbar">
+          <button class="mobile-menu-toggle ghost-button" type="button" data-open-navigation aria-controls="navigationDialog" aria-haspopup="dialog">☰ Menu</button>
           <div>
-            <p class="eyebrow">Sistema de registro</p>
-            <h1>Controle operacional da hamburgueria</h1>
+            <p class="eyebrow">Sua operação, conectada</p>
+            <h1 id="pageTitle">Visão geral</h1>
           </div>
           <div class="topbar-actions">
             <span id="currentUserBadge" class="user-badge"></span>
@@ -119,12 +120,7 @@
           </div>
         </header>
 
-        <div class="cloud-migration admin-only"><strong>Dados compartilhados</strong>
-          <p>Importe o backup JSON da versão antiga ou recupere uma versão anterior. Usuários antigos precisam ser cadastrados novamente com senhas novas.</p>
-          <button id="migrateLocal" type="button">Migrar dados deste navegador</button>
-          <button id="recoverVersion" type="button">Recuperar versão anterior</button>
-        </div>
-        <div id="backupWarning" class="backup-warning hidden"></div>
+
 
         <section id="dashboard" class="tab-panel active admin-only">
           <section class="panel filter-panel">
@@ -879,6 +875,12 @@
         </section>
 
         <section id="settings" class="tab-panel admin-only hidden">
+        <details class="cloud-migration admin-only"><summary>Backup e recuperação de dados</summary>
+          <p>Importe o backup JSON da versão antiga ou recupere uma versão anterior. Usuários antigos precisam ser cadastrados novamente com senhas novas.</p>
+          <button id="migrateLocal" type="button">Migrar dados deste navegador</button>
+          <button id="recoverVersion" type="button">Recuperar versão anterior</button>
+        </details>
+        <div id="backupWarning" class="backup-warning hidden"></div>
           <div class="grid-two">
             <form id="settingsForm" class="panel form-panel">
               <div class="panel-header">
@@ -1089,6 +1091,8 @@
       </div>
     </template>
 
+    <dialog id="navigationDialog" class="navigation-dialog" aria-labelledby="navigationTitle"><header><h2 id="navigationTitle">Navegar pela operação</h2><button type="button" class="ghost-button" id="closeNavigation" aria-label="Fechar menu">Fechar ×</button></header></dialog>
+    <nav class="mobile-dock hidden" aria-label="Atalhos"><button type="button" data-go-tab="menu">Pedidos</button><button type="button" data-go-tab="kitchen">Cozinha</button><button type="button" data-go-tab="customers">Clientes</button><button type="button" data-open-navigation aria-controls="navigationDialog" aria-haspopup="dialog">☰ Mais</button></nav>
     <script src="repositories/storage.repository.js"></script>
     <script src="repositories/customer.repository.js"></script>
     <script src="models/customer.model.js"></script>
@@ -1096,5 +1100,6 @@
     <script src="services/order-inventory.service.js"></script>
     <script src="services/cloud-client.js"></script>
     <script src="app.js"></script>
+    <script src="services/navigation.js"></script>
   </body>
 </html>
