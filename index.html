@@ -8,7 +8,8 @@
     <script src="config/app.config.js"></script>
   </head>
   <body>
-    <div class="cloud-bar" role="status" aria-live="polite"><span id="cloudMessage">Conectando ao servidor…</span>
+    <a class="skip-link" href="#pageTitle">Ir para o conteúdo</a>
+    <div class="cloud-bar" data-state="loading" role="status" aria-live="polite"><span id="cloudMessage">Conectando ao servidor…</span>
       <button id="reloadCloud" type="button">Atualizar conexão</button>
       <button id="retryPending" class="hidden" type="button">Repetir envio</button>
       <button id="downloadPending" class="hidden" type="button">Baixar rascunho</button>
@@ -86,11 +87,13 @@
           </div>
           <div>
             <strong>PJ Burguer</strong>
-            <small>Compra, venda e estoque</small>
+            <small>Gestão da hamburgueria</small>
           </div>
         </div>
 
+        <div class="workspace-card"><span class="workspace-avatar" aria-hidden="true">PJ</span><div><strong>Meu negócio</strong><small>Operação conectada</small></div></div>
         <nav class="tabs" aria-label="Navegação principal">
+          <p class="nav-section">ESPAÇO DE TRABALHO</p>
           <button class="tab-button active admin-only" data-tab="dashboard" type="button">Visão geral</button>
           <button class="tab-button" data-tab="menu" type="button">Pedidos</button>
           <button class="tab-button" data-tab="customers" type="button">Clientes</button>
@@ -99,33 +102,91 @@
           <button class="tab-button" data-tab="cardapio" type="button">Cardápio</button>
           <button class="tab-button admin-only" data-tab="products" type="button">Produtos</button>
           <button class="tab-button admin-only" data-tab="inventory" type="button">Estoque</button>
+          <p class="nav-section admin-only">GESTÃO</p>
           <button class="tab-button admin-only" data-tab="finance" type="button">Financeiro</button>
           <button class="tab-button admin-only" data-tab="reports" type="button">Relatórios</button>
           <button id="usersTabButton" class="tab-button admin-only hidden" data-tab="users" type="button">Usuários</button>
           <button class="tab-button admin-only" data-tab="settings" type="button">Configurações</button>
         </nav>
+        <div class="sidebar-note"><span data-ui-icon="shield"></span><div><strong>Cada detalhe conta.</strong><small>Seu negócio organizado, onde você estiver.</small></div></div>
       </aside>
 
       <section class="content">
         <header class="topbar">
-          <button class="mobile-menu-toggle ghost-button" type="button" data-open-navigation aria-controls="navigationDialog" aria-haspopup="dialog">☰ Menu</button>
-          <div>
-            <p class="eyebrow">Sua operação, conectada</p>
-            <h1 id="pageTitle">Visão geral</h1>
-          </div>
-          <div class="topbar-actions">
-            <span id="currentUserBadge" class="user-badge"></span>
-            <button id="changePassword" class="ghost-button" type="button">Alterar senha</button>
-            <button id="logoutButton" class="ghost-button" type="button">Sair</button>
-          </div>
+          <button class="mobile-menu-toggle ghost-button" type="button" data-open-navigation aria-controls="navigationDialog" aria-haspopup="dialog"><span data-ui-icon="menu"></span><span>Menu</span></button>
+          <div class="breadcrumb"><span>Meu negócio</span><span aria-hidden="true">/</span><strong id="pageCrumb">Visão geral</strong></div>
+          <div class="topbar-actions"><time id="workspaceDate"></time><div class="account-summary"><span id="userAvatar" aria-hidden="true">PJ</span><span id="currentUserBadge" class="user-badge"></span></div><details class="account-menu"><summary aria-label="Opções da conta"><span data-ui-icon="chevron"></span></summary><div><button id="changePassword" class="ghost-button" type="button">Alterar senha</button><button id="logoutButton" class="ghost-button" type="button">Sair da conta</button></div></details></div>
         </header>
+        <div class="page-heading"><div><p class="eyebrow" id="pageGroup">MEU NEGÓCIO</p><h1 id="pageTitle" tabindex="-1">Visão geral</h1><p id="pageDescription">Os números de hoje e o que precisa da sua atenção.</p></div><button class="primary-button dashboard-action" type="button" data-go-tab="menu"><span data-ui-icon="plus"></span>Novo pedido</button></div>
+
 
 
 
         <section id="dashboard" class="tab-panel active admin-only">
-          <section class="panel filter-panel">
+          <div class="stats-grid dashboard-stats">
+            <article class="stat-card">
+              <span>Vendas do dia</span>
+              <strong id="statRevenue">R$ 0,00</strong>
+              <small>Faturamento de hoje</small>
+            </article>
+            <article class="stat-card">
+              <span>Pedidos em aberto</span>
+              <strong id="statOpenOrders">0</strong>
+              <small>Acompanhe a operação</small>
+            </article>
+            <article class="stat-card">
+              <span>Lucro do dia</span>
+              <strong id="statDayProfit">R$ 0,00</strong>
+              <small>Lucro real estimado</small>
+            </article>
+            <article class="stat-card">
+              <span>Estoque em atenção</span>
+              <strong id="statCriticalCount">0</strong>
+              <small>Itens para agir</small>
+            </article>
+            <article class="stat-card">
+              <span>Produto mais vendido</span>
+              <strong id="statTopProduct">-</strong>
+              <small>Hoje</small>
+            </article>
+          </div>
+
+          <div class="grid-two">
+            <section class="panel">
+              <div class="panel-header">
+                <h2>Atenção ao estoque</h2><button type="button" class="text-button" data-go-tab="inventory">Ver estoque <span aria-hidden="true">↗</span></button>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Ingrediente</th>
+                      <th>Saldo</th>
+                      <th>Minimo</th>
+                      <th>Status</th>
+                      <th>Sugerido comprar</th>
+                    </tr>
+                  </thead>
+                  <tbody id="alertsTable"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <h2>Pedidos recentes</h2><button type="button" class="text-button" data-go-tab="menu">Ver pedidos <span aria-hidden="true">↗</span></button>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <tbody id="periodSummaryTable"></tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+
+<details class="advanced-filters"><summary>Filtros de período</summary>          <section class="panel filter-panel">
             <div class="panel-header">
-              <h2>Relatorio por periodo</h2>
+              <h2>Período dos relatórios</h2><span class="section-note">Os indicadores acima representam hoje. Este filtro é usado nas consultas por período.</span>
             </div>
             <div class="filter-grid">
               <label>
@@ -149,72 +210,12 @@
             </div>
           </section>
 
-          <div class="stats-grid">
-            <article class="stat-card">
-              <span>Vendas do dia</span>
-              <strong id="statRevenue">R$ 0,00</strong>
-              <small>Faturamento de hoje</small>
-            </article>
-            <article class="stat-card">
-              <span>Pedidos em aberto</span>
-              <strong id="statOpenOrders">0</strong>
-              <small>Aguardando/producao/pronto</small>
-            </article>
-            <article class="stat-card">
-              <span>Lucro do dia</span>
-              <strong id="statDayProfit">R$ 0,00</strong>
-              <small>Lucro real estimado</small>
-            </article>
-            <article class="stat-card">
-              <span>Estoque critico</span>
-              <strong id="statCriticalCount">0</strong>
-              <small>Itens para agir</small>
-            </article>
-            <article class="stat-card">
-              <span>Produto mais vendido</span>
-              <strong id="statTopProduct">-</strong>
-              <small>Hoje</small>
-            </article>
-          </div>
-
-          <div class="grid-two">
-            <section class="panel">
-              <div class="panel-header">
-                <h2>Estoque critico e lista de compra</h2>
-              </div>
-              <div class="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Ingrediente</th>
-                      <th>Saldo</th>
-                      <th>Minimo</th>
-                      <th>Status</th>
-                      <th>Sugerido comprar</th>
-                    </tr>
-                  </thead>
-                  <tbody id="alertsTable"></tbody>
-                </table>
-              </div>
-            </section>
-
-            <section class="panel">
-              <div class="panel-header">
-                <h2>Ultimos pedidos</h2>
-              </div>
-              <div class="table-wrap">
-                <table>
-                  <tbody id="periodSummaryTable"></tbody>
-                </table>
-              </div>
-            </section>
-          </div>
-
+</details>
         </section>
 
         <section id="sales" class="tab-panel">
-          <div class="grid-two">
-            <form id="saleForm" class="panel form-panel">
+          <div class="grid-two editor-layout">
+            <details class="editor-panel" id="editor-saleForm"><summary>+ Registrar venda</summary><form id="saleForm" class="panel form-panel">
               <div class="panel-header">
                 <h2 id="saleFormTitle">Registrar venda</h2>
               </div>
@@ -240,7 +241,7 @@
                 <strong>Baixa prevista nessa venda:</strong>
                 <ul id="saleStockImpact"></ul>
               </div>
-            </form>
+            </form></details>
 
             <section class="panel">
               <div class="panel-header">
@@ -302,10 +303,10 @@
         </section>
 
         <section id="products" class="tab-panel">
-          <div class="grid-two">
-            <form id="productForm" class="panel form-panel">
+          <div class="grid-two editor-layout">
+            <details class="editor-panel" id="editor-productForm"><summary>+ Novo produto</summary><form id="productForm" class="panel form-panel">
               <div class="panel-header">
-                <h2 id="productFormTitle">Novo hamburguer</h2>
+                <h2 id="productFormTitle">Novo produto</h2>
               </div>
               <input id="productId" type="hidden" />
               <label>
@@ -376,10 +377,10 @@
                 </div>
               </div>
               <div class="form-actions">
-                <button id="productSubmit" type="submit">Salvar hamburguer</button>
+                <button id="productSubmit" type="submit">Salvar produto</button>
                 <button id="cancelProductEdit" class="ghost-button hidden" type="button">Cancelar edicao</button>
               </div>
-            </form>
+            </form></details>
 
             <section class="panel">
               <div class="panel-header">
@@ -606,8 +607,8 @@
             </section>
           </div>
 
-          <div class="grid-two">
-            <form id="expenseForm" class="panel form-panel">
+          <div class="grid-two editor-layout">
+            <details class="editor-panel" id="editor-expenseForm"><summary>+ Registrar despesa</summary><form id="expenseForm" class="panel form-panel">
               <div class="panel-header">
                 <h2 id="expenseFormTitle">Nova despesa operacional</h2>
               </div>
@@ -642,7 +643,7 @@
                 <button id="expenseSubmit" type="submit">Salvar despesa</button>
                 <button id="cancelExpenseEdit" class="ghost-button hidden" type="button">Cancelar edicao</button>
               </div>
-            </form>
+            </form></details>
 
             <section class="panel">
               <div class="panel-header">
@@ -799,10 +800,8 @@
             </section>
           </div>
 
-          <section class="panel">
-            <div class="panel-header">
-              <h2>Auditoria interna</h2>
-            </div>
+          <details class="panel audit-disclosure"><summary>Histórico de auditoria</summary>
+
             <div class="table-wrap">
               <table>
                 <thead>
@@ -816,7 +815,7 @@
                 <tbody id="auditTable"></tbody>
               </table>
             </div>
-          </section>
+          </details>
         </section>
 
         <section id="investment" class="tab-panel">
@@ -888,8 +887,8 @@
         </section>
 
         <section id="users" class="tab-panel admin-only hidden">
-          <div class="grid-two">
-            <form id="userForm" class="panel form-panel">
+          <div class="grid-two editor-layout">
+            <details class="editor-panel" id="editor-userForm"><summary>+ Novo usuário</summary><form id="userForm" class="panel form-panel">
               <div class="panel-header">
                 <h2 id="userFormTitle">Novo usuario</h2>
               </div>
@@ -919,7 +918,7 @@
                 <button id="cancelUserEdit" class="ghost-button hidden" type="button">Cancelar edicao</button>
               </div>
               <p id="userMessage" class="hint"></p>
-            </form>
+            </form></details>
 
             <section class="panel">
               <div class="panel-header">
@@ -1049,6 +1048,7 @@
                 <button id="cancelPurchaseEdit" class="ghost-button hidden" type="button">Cancelar edicao</button>
               </div>
             <button type="button" class="ghost-button" data-close-stock>Fechar</button></form></dialog>
+    <script src="services/interface.js"></script>
     <script src="services/inventory-ui.js"></script>
     <script src="repositories/storage.repository.js"></script>
     <script src="repositories/customer.repository.js"></script>

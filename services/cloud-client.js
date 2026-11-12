@@ -4,6 +4,7 @@ function cloudDialog(message, initial) {
   return new Promise(resolve=>{
     const dialog=document.createElement('dialog'), form=document.createElement('form');
     form.className='auth-form';form.method='dialog';
+    const heading=document.createElement('h2');heading.className='ui-dialog-heading';heading.id='action-dialog-title';heading.textContent=initial===undefined?'Confirmar ação':'Informar dados';dialog.setAttribute('aria-labelledby',heading.id);form.append(heading);
     const label=document.createElement('p');label.textContent=message;label.style.whiteSpace='pre-line';form.append(label);
     let input;
     if(initial!==undefined){input=document.createElement('input');input.type='text';input.value=initial;input.setAttribute('aria-label',message);form.append(input);}
@@ -21,6 +22,7 @@ function cloudPrompt(message,initial=''){return cloudDialog(message,initial);}
 function cloudStatus(message, error=false) {
   const el=document.querySelector('#cloudMessage');
   if(el) { el.textContent=message; el.classList.toggle('cloud-error',error); }
+  document.querySelector('.cloud-bar').dataset.state=error?'error':cloud.busy?'saving':message.startsWith('Conectando')?'loading':'ready';
   document.querySelector('#retryPending')?.classList.toggle('hidden',!cloud.pending);
   document.querySelector('#downloadPending')?.classList.toggle('hidden',!cloud.pending);
   document.querySelector('#discardPending')?.classList.toggle('hidden',!cloud.pending);
@@ -113,7 +115,7 @@ async function authSubmit(url,data,messageSelector) {
 }
 window.addEventListener('unhandledrejection',event=>{
   event.preventDefault();
-  if(!event.reason?.cloudHandled)alert(event.reason?.message || 'Não foi possível concluir esta operação.');
+  if(!event.reason?.cloudHandled)uiNotify(event.reason?.message || 'Não foi possível concluir esta operação.');
 });
 window.addEventListener('beforeunload',event=>{if(cloud.busy||cloud.pending){event.preventDefault();event.returnValue='';}});
 window.addEventListener('online',()=>cloudRefresh(true).catch(()=>{}));
@@ -130,17 +132,17 @@ window.addEventListener('DOMContentLoaded',()=>{
   });
   document.querySelector('#migrateLocal').addEventListener('click',async()=>{
     const raw=localStorage.getItem(STORAGE_KEY);
-    if(!raw)return alert('Não há dados antigos neste endereço. Use Importar backup JSON.');
+    if(!raw)return uiNotify('Não há dados antigos neste endereço. Use Importar backup JSON.');
     const parsed=JSON.parse(raw);
     if(!validateBackup(parsed))throw new Error('Os dados locais não têm um formato reconhecido.');
     downloadText('pjotabuguer-original-antes-da-migracao.json',raw,'application/json');
     if(!await cloudConfirm('O backup original foi baixado. Importar os dados deste navegador para todos os dispositivos? A versão atual do servidor ficará no histórico.'))return;
     await cloudMutate('state.import',normalizeState(parsed));renderAll();
-    alert('Migração confirmada. A cópia antiga do navegador foi preservada.');
+    uiNotify('Migração confirmada. A cópia antiga do navegador foi preservada.');
   });
   document.querySelector('#recoverVersion').addEventListener('click',async()=>{
     const history=await cloudRequest('/api/history');
-    if(!history.length)return alert('Ainda não existem versões anteriores.');
+    if(!history.length)return uiNotify('Ainda não existem versões anteriores.');
     const choice=await cloudPrompt('Versões recentes:\n'+history.slice(0,15).map(h=>h.revision+' — '+new Date(h.created_at).toLocaleString('pt-BR')+' — '+h.reason).join('\n')+'\n\nNúmero da versão a restaurar:');
     if(choice===null||!/^\d+$/.test(choice))return;
     if(!await cloudConfirm('Restaurar a versão '+choice+'? A versão atual também ficará no histórico.'))return;
@@ -148,17 +150,17 @@ window.addEventListener('DOMContentLoaded',()=>{
   });
   document.querySelector('#forgotPassword').addEventListener('click',async()=>{
     const email=document.querySelector('#loginEmail').value;
-    if(!email)return alert('Preencha o email de acesso.');
-    const result=await cloudRequest('/api/auth/forgot',{email});alert(result.message);
+    if(!email)return uiNotify('Preencha o email de acesso.');
+    const result=await cloudRequest('/api/auth/forgot',{email});uiNotify(result.message);
   });
   document.querySelector('#changePassword').addEventListener('click',()=>document.querySelector('#passwordDialog').showModal());
   document.querySelector('#cancelPassword').addEventListener('click',()=>document.querySelector('#passwordDialog').close());
   document.querySelector('#passwordForm').addEventListener('submit',async event=>{
     event.preventDefault();
     const next=document.querySelector('#newPassword').value;
-    if(next!==document.querySelector('#confirmPassword').value)return alert('As senhas não coincidem.');
+    if(next!==document.querySelector('#confirmPassword').value)return uiNotify('As senhas não coincidem.');
     await cloudRequest('/api/password',{current:document.querySelector('#currentPassword').value,password:next});
-    event.target.reset();document.querySelector('#passwordDialog').close();clearSession();await cloudBoot();alert('Senha alterada. Entre novamente.');
+    event.target.reset();document.querySelector('#passwordDialog').close();clearSession();await cloudBoot();uiNotify('Senha alterada. Entre novamente.');
   });
   const access=new URLSearchParams(location.hash.slice(1));
   if(access.has('setup')){
@@ -172,8 +174,8 @@ window.addEventListener('DOMContentLoaded',()=>{
     history.replaceState(null,'',location.pathname);document.querySelector('#resetDialog').showModal();
     document.querySelector('#resetForm').addEventListener('submit',async event=>{
       event.preventDefault();const next=document.querySelector('#resetPassword').value;
-      if(next!==document.querySelector('#resetConfirm').value)return alert('As senhas não coincidem.');
-      await cloudRequest('/api/auth/reset',{token:reset,password:next});event.target.reset();document.querySelector('#resetDialog').close();alert('Senha redefinida. Entre com a nova senha.');
+      if(next!==document.querySelector('#resetConfirm').value)return uiNotify('As senhas não coincidem.');
+      await cloudRequest('/api/auth/reset',{token:reset,password:next});event.target.reset();document.querySelector('#resetDialog').close();uiNotify('Senha redefinida. Entre com a nova senha.');
     });
   }
 });

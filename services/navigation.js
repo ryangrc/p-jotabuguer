@@ -9,7 +9,8 @@
   const close = () => { if (dialog.open) dialog.close(); };
   const layout = () => {
     close();
-    (breakpoint.matches ? dialog : sidebar).append(tabs);
+    if (breakpoint.matches) dialog.append(tabs);
+    else sidebar.insertBefore(tabs, sidebar.querySelector('.sidebar-note'));
   };
   document.querySelectorAll('[data-open-navigation]').forEach(button => {
     button.addEventListener('click', () => dialog.showModal());

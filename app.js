@@ -1034,7 +1034,7 @@ function getKitchenReceiptHtml(order) {
 function printHtml(html, blockedMessage) {
   const printWindow = window.open("", "_blank", "width=380,height=640");
   if (!printWindow) {
-    alert(blockedMessage);
+    uiNotify(blockedMessage);
     return;
   }
 
@@ -1225,7 +1225,7 @@ function updatePurchase(purchase, ingredient, quantity, cost) {
     const currentIngredient = findIngredient(purchase.ingredientId);
     const nextStock = currentIngredient.stock - purchase.quantity + quantity;
     if (nextStock < -0.000001) {
-      alert("Nao e possivel editar essa compra porque o estoque ficaria negativo.");
+      uiNotify("Nao e possivel editar essa compra porque o estoque ficaria negativo.");
       return false;
     }
     currentIngredient.stock = nextStock;
@@ -1242,7 +1242,7 @@ function updatePurchase(purchase, ingredient, quantity, cost) {
   } else {
     const oldIngredient = findIngredient(purchase.ingredientId);
     if (!removePurchaseFromStock(purchase)) {
-      alert("Nao e possivel editar essa compra porque a remocao deixaria o estoque negativo.");
+      uiNotify("Nao e possivel editar essa compra porque a remocao deixaria o estoque negativo.");
       return false;
     }
     if (oldIngredient) {
@@ -1262,7 +1262,7 @@ async function deletePurchase(id) {
   if (!purchase) return;
   if (!await cloudConfirm(`Deseja excluir a compra de "${purchase.ingredientName}"? O estoque sera reduzido.`)) return;
   if (!removePurchaseFromStock(purchase)) {
-    alert("Nao e possivel excluir essa compra porque o estoque ficaria negativo.");
+    uiNotify("Nao e possivel excluir essa compra porque o estoque ficaria negativo.");
     return;
   }
   const ingredient = findIngredient(purchase.ingredientId);
@@ -1586,7 +1586,7 @@ function renderDashboard() {
     todayOrders
       .slice(-8)
       .reverse()
-      .map((order) => `<tr><th>#${getOrderNumber(order)} - ${escapeHtml(order.customerName || "Cliente")}</th><td>${getOrderStatusLabel(order)}</td></tr>`)
+      .map((order) => `<tr><th scope="row"><span class="recent-order-number">#${getOrderNumber(order)}</span><strong>${escapeHtml(order.customerName || "Cliente")}</strong></th><td><span class="badge neutral">${getOrderStatusLabel(order)}</span></td></tr>`)
       .join("") || `<tr><td class="empty">Nenhum pedido hoje.</td></tr>`;
 }
 
@@ -2176,7 +2176,7 @@ function renderProfessionalCash(data = getFinanceMetrics()) {
 
 async function openCash() {
   if (getOpenCash()) {
-    alert("Ja existe um caixa aberto.");
+    uiNotify("Ja existe um caixa aberto.");
     return;
   }
   const responsible = $("#cashResponsible").value.trim() || getCurrentUserName();
@@ -2206,13 +2206,13 @@ async function openCash() {
 async function registerCashAdjustment() {
   const openCash = getOpenCash();
   if (!openCash) {
-    alert("Abra o caixa antes de registrar suprimento ou sangria.");
+    uiNotify("Abra o caixa antes de registrar suprimento ou sangria.");
     return;
   }
   const amount = toNumber($("#cashAdjustmentAmount").value);
   const note = $("#cashAdjustmentNote").value.trim();
   if (amount <= 0 || !note) {
-    alert("Informe valor e observacao para registrar o ajuste de caixa.");
+    uiNotify("Informe valor e observacao para registrar o ajuste de caixa.");
     return;
   }
   const type = $("#cashAdjustmentType").value === "sangria" ? "sangria" : "suprimento";
@@ -2235,7 +2235,7 @@ async function registerCashAdjustment() {
 async function closeCash() {
   const openCash = getOpenCash();
   if (!openCash) {
-    alert("Nao ha caixa aberto para fechar.");
+    uiNotify("Nao ha caixa aberto para fechar.");
     return;
   }
   const data = getFinanceMetrics();
@@ -2245,7 +2245,7 @@ async function closeCash() {
   const difference = totalCounted - totalExpected;
   const notes = $("#cashConferenceNote").value.trim();
   if (Math.abs(difference) >= 0.01 && !notes) {
-    alert("Informe uma observacao para fechar caixa com divergencia.");
+    uiNotify("Informe uma observacao para fechar caixa com divergencia.");
     $("#cashConferenceNote").focus();
     return;
   }
@@ -2263,7 +2263,7 @@ async function closeCash() {
   addAuditLog("Caixa fechado", `Esperado: ${currency.format(totalExpected)} / Contado: ${currency.format(totalCounted)} / Diferenca: ${currency.format(difference)}`);
   await saveState();
   renderAll();
-  alert("Caixa fechado. Gere um backup em Configuracoes para guardar o fechamento.");
+  uiNotify("Caixa fechado. Gere um backup em Configuracoes para guardar o fechamento.");
   activateTab("settings");
 }
 
@@ -2362,6 +2362,7 @@ function resetExpenseForm() {
 function startExpenseEdit(id) {
   const expense = findExpense(id);
   if (!expense) return;
+  openEditor("expenseForm");
   $("#expenseId").value = expense.id;
   $("#expenseCategory").value = expense.category;
   $("#expenseDescription").value = expense.description;
@@ -2845,16 +2846,16 @@ function addRecipeLineFromQuickAdd(ingredientId = "") {
   const quantity = toNumber($("#recipeQuickQuantity").value);
 
   if (!selectedId) {
-    alert("Selecione uma materia-prima para adicionar.");
+    uiNotify("Selecione uma materia-prima para adicionar.");
     return;
   }
   if (quantity <= 0) {
-    alert("Informe a quantidade usada por unidade vendida.");
+    uiNotify("Informe a quantidade usada por unidade vendida.");
     $("#recipeQuickQuantity").focus();
     return;
   }
   if (getRecipeIngredientIds().includes(selectedId)) {
-    alert("Essa materia-prima ja esta na ficha tecnica.");
+    uiNotify("Essa materia-prima ja esta na ficha tecnica.");
     return;
   }
 
@@ -2934,11 +2935,12 @@ function startSaleEdit(id) {
 
   const product = findProduct(sale.productId);
   if (!product) {
-    alert("Esse produto nao esta mais no cardapio. Para editar a venda, cadastre o produto novamente.");
+    uiNotify("Esse produto nao esta mais no cardapio. Para editar a venda, cadastre o produto novamente.");
     return;
   }
 
-  document.querySelector('[data-tab="sales"]').click();
+  openEditor("saleForm");
+  activateTab("sales");
   $("#saleId").value = sale.id;
   $("#saleProduct").value = sale.productId;
   $("#saleQuantity").value = sale.quantity;
@@ -2981,8 +2983,8 @@ function resetProductForm() {
   $("#productMenuActive").checked = true;
   $("#productFeatured").checked = false;
   $("#productSortOrder").value = 0;
-  $("#productFormTitle").textContent = "Novo hamburguer";
-  $("#productSubmit").textContent = "Salvar hamburguer";
+  $("#productFormTitle").textContent = "Novo produto";
+  $("#productSubmit").textContent = "Salvar produto";
   $("#cancelProductEdit").classList.add("hidden");
   $("#recipeIngredientSearch").value = "";
   $("#recipeQuickQuantity").value = "";
@@ -2995,6 +2997,7 @@ function startProductEdit(id) {
   const product = findProduct(id);
   if (!product) return;
 
+  openEditor("productForm");
   document.querySelector('[data-tab="products"]').click();
   $("#productId").value = product.id;
   $("#productName").value = product.name;
@@ -3006,7 +3009,7 @@ function startProductEdit(id) {
   $("#productMenuActive").checked = product.menuActive !== false;
   $("#productFeatured").checked = Boolean(product.featured);
   $("#productSortOrder").value = product.sortOrder || 0;
-  $("#productFormTitle").textContent = "Editar hamburguer";
+  $("#productFormTitle").textContent = "Editar produto";
   $("#productSubmit").textContent = "Salvar alteracoes";
   $("#cancelProductEdit").classList.remove("hidden");
   $("#recipeLines").innerHTML = "";
@@ -3077,6 +3080,7 @@ function startUserEdit(id) {
   const user = findUser(id);
   if (!user || !isAdmin()) return;
 
+  openEditor("userForm");
   activateTab("users");
   $("#userId").value = user.id;
   $("#userName").value = user.name;
@@ -3140,7 +3144,7 @@ function changeQuickOrderItem(productId, delta) {
   }
 
   if (!canFulfillItems(nextItems)) {
-    alert("Estoque insuficiente para adicionar mais este produto.");
+    uiNotify("Estoque insuficiente para adicionar mais este produto.");
     return;
   }
 
@@ -3219,10 +3223,10 @@ function getMenuInput(productId, className) {
 
 async function createMenuOrder(){
   syncQuickOrderDraft();
-  if(!quickOrderDraft.items.length) return alert('Selecione pelo menos um produto.');
+  if(!quickOrderDraft.items.length) return uiNotify('Selecione pelo menos um produto.');
   const form=getQuickOrderFormData();
-  if(!form.customerName) return alert('Informe o nome do cliente.');
-  if(form.destination!=='pickup' && !form.address) return alert('Informe o endereço ou a mesa.');
+  if(!form.customerName) return uiNotify('Informe o nome do cliente.');
+  if(form.destination!=='pickup' && !form.address) return uiNotify('Informe o endereço ou a mesa.');
   if(!await cloudConfirm('Confirmar pedido de '+form.customerName+'? Total previsto: '+currency.format(form.total))) return;
   const {subtotal,total,...fields}=form;
   const result=await cloudMutate('order.create',{...fields,items:quickOrderDraft.items.map(i=>({productId:i.productId,quantity:i.quantity}))});
@@ -3441,7 +3445,7 @@ async function importBackupFile(file){
   if(!validateBackup(parsed)) throw new Error('Backup inválido.');
   if(!await cloudConfirm('Restaurar este backup no servidor? A versão atual ficará no histórico de recuperação.'))return;
   await cloudMutate('state.import',normalizeState(parsed)); renderAll();
-  alert('Backup confirmado no servidor e disponível nos outros dispositivos.');
+  uiNotify('Backup confirmado no servidor e disponível nos outros dispositivos.');
 }
 
 function csvEscape(value) {
@@ -3616,7 +3620,7 @@ function bindEvents() {
     const date = $("#expenseDate").value ? new Date(`${$("#expenseDate").value}T12:00:00`).toISOString() : new Date().toISOString();
 
     if (!description || amount <= 0) {
-      alert("Informe descricao e valor valido para a despesa.");
+      uiNotify("Informe descricao e valor valido para a despesa.");
       return;
     }
 
@@ -3774,15 +3778,15 @@ function bindEvents() {
     const recipe = getRecipeLinesFromForm();
 
     if (!name || price <= 0) {
-      alert("Informe nome e preco de venda validos.");
+      uiNotify("Informe nome e preco de venda validos.");
       return;
     }
     if (!recipe.length) {
-      alert("Adicione pelo menos um ingrediente na receita.");
+      uiNotify("Adicione pelo menos um ingrediente na receita.");
       return;
     }
     if (hasNameConflict(state.products, name, productId)) {
-      alert("Ja existe um produto com esse nome.");
+      uiNotify("Ja existe um produto com esse nome.");
       return;
     }
 
