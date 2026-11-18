@@ -1383,3 +1383,10 @@ input::placeholder, textarea::placeholder { color: #687b98; }
 
 .navigation-dialog .tab-button { gap: 8px; padding-inline: 10px; font-size: 12px; min-width: 0; }
 .navigation-dialog .tab-button span { overflow-wrap: anywhere; }
+
+/* Official artwork is preserved unchanged; crop only its surrounding whitespace. */
+.brand:has(.official-logo) { display: flex; flex-direction: column; align-items: stretch; gap: .625rem; }
+.official-logo { display: block; width: 100%; height: auto; aspect-ratio: 3 / 1; object-fit: cover; object-position: center 53%; border-radius: .5rem; }
+.brand:has(.official-logo) small { font-size: .875rem; line-height: 1.5; color: #465976; }
+.auth-brand .official-logo { max-width: 22rem; }
+.navigation-logo { width: min(12rem, 100%); margin-bottom: 1rem; }
