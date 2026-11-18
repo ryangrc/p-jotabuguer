@@ -322,10 +322,16 @@
                   Descricao
                   <textarea id="productDescription" rows="3" placeholder="Ex.: Pao brioche, smash, cheddar e molho da casa"></textarea>
                 </label>
-                <label>
-                  URL da foto
-                  <input id="productImageUrl" type="url" placeholder="https://..." />
-                </label>
+                <fieldset class="product-photo" id="productPhotoDrop">
+                  <legend>Foto do produto</legend>
+                  <input id="productImageUrl" type="hidden" />
+                  <label for="productPhotoFile">Escolher foto do notebook ou da galeria</label>
+                  <input id="productPhotoFile" type="file" accept="image/jpeg,image/png,image/webp" aria-describedby="productPhotoHelp productPhotoStatus" />
+                  <p id="productPhotoHelp">Arraste uma foto para esta área ou escolha um arquivo. JPG, PNG ou WebP, até 15 MB. A foto será salva junto com o produto.</p>
+                  <img id="productPhotoPreview" alt="Prévia da foto do produto" hidden />
+                  <button id="removeProductPhoto" type="button" class="ghost-button" hidden>Remover foto</button>
+                  <p id="productPhotoStatus" role="status" aria-live="polite"></p>
+                </fieldset>
                 <div class="menu-config-grid">
                   <label class="check-row">
                     <input id="productFeatured" type="checkbox" />
@@ -1043,6 +1049,7 @@
     <script src="services/customer.service.js"></script>
     <script src="services/order-inventory.service.js"></script>
     <script src="services/cloud-client.js"></script>
+    <script src="services/product-photo.js"></script>
     <script src="app.js"></script>
     <script src="services/navigation.js"></script>
   </body>

@@ -1390,3 +1390,13 @@ input::placeholder, textarea::placeholder { color: #687b98; }
 .brand:has(.official-logo) small { font-size: .875rem; line-height: 1.5; color: #465976; }
 .auth-brand .official-logo { max-width: 22rem; }
 .navigation-logo { width: min(12rem, 100%); margin-bottom: 1rem; }
+
+.product-photo { min-width: 0; padding: 1rem; margin: 0; border: 2px dashed #74839a; border-radius: .75rem; display: grid; gap: .75rem; }
+.product-photo legend { padding: 0 .5rem; font-size: 1rem; font-weight: 600; }
+.product-photo p { margin: 0; font-size: .875rem; color: #465976; }
+.product-photo.drag-over { border-color: #1946c7; background: #edf2ff; }
+.product-photo input { font-size: 1rem; max-width: 100%; }
+.product-photo input::file-selector-button { padding: .75rem; margin-right: .5rem; border: 0; border-radius: .375rem; background: #2458ed; color: white; cursor: pointer; }
+#productPhotoPreview, .product-photo-image { width: 100%; max-height: 14rem; object-fit: contain; border-radius: .5rem; }
+.product-photo [hidden] { display: none; }
+.product-photo :focus-visible { outline: 3px solid #1946c7; outline-offset: 3px; }

@@ -1651,6 +1651,7 @@ function renderProducts() {
           .join("");
 
         return `<article class="product-card">
+          ${productPhotoMarkup(product)}
           <div class="product-card-header">
             <strong>${escapeHtml(product.name)} - ${currency.format(product.price)}</strong>
             <div class="row-actions">
@@ -1959,6 +1960,7 @@ function renderMenuCatalog() {
             : `<span class="badge danger">Sem estoque</span>`;
 
         return `<article class="menu-card">
+          ${productPhotoMarkup(product)}
           <div class="menu-card-header">
             <div>
               <strong>${escapeHtml(publicName)}</strong>
@@ -2979,6 +2981,8 @@ function startPurchaseEdit(id) {
 
 function resetProductForm() {
   $("#productForm").reset();
+  $("#productImageUrl").value = "";
+  resetProductPhoto();
   $("#productId").value = "";
   $("#productMenuActive").checked = true;
   $("#productFeatured").checked = false;
@@ -3006,6 +3010,7 @@ function startProductEdit(id) {
   $("#productCategory").value = product.category || "";
   $("#productDescription").value = product.description || "";
   $("#productImageUrl").value = product.imageUrl || "";
+  resetProductPhoto();
   $("#productMenuActive").checked = product.menuActive !== false;
   $("#productFeatured").checked = Boolean(product.featured);
   $("#productSortOrder").value = product.sortOrder || 0;
@@ -3771,6 +3776,7 @@ function bindEvents() {
     const menuName = $("#productMenuName").value.trim() || name;
     const category = $("#productCategory").value.trim() || "Cardapio";
     const description = $("#productDescription").value.trim();
+    if (productPhotoBusy()) { uiNotify("Aguarde a preparação da foto antes de salvar."); return; }
     const imageUrl = $("#productImageUrl").value.trim();
     const menuActive = $("#productMenuActive").checked;
     const featured = $("#productFeatured").checked;
