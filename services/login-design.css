@@ -1,5 +1,5 @@
 /* Login presentation only: existing authentication forms and handlers are retained. */
-#authScreen { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: stretch; padding: 0; background: #fff; overflow-y: auto; font-size: 1rem; line-height: 1.6; }
+#authScreen { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: stretch; justify-items: stretch; padding: 0; background: #fff; overflow-y: auto; font-size: 1rem; line-height: 1.6; }
 #authScreen.hidden { display: none; }
 .login-story { min-width: 0; padding: clamp(2rem, 5vw, 5rem); background: radial-gradient(ellipse at 0 100%, #4d3021 0, transparent 65%), #241c18; color: #fff8ee; display: flex; flex-direction: column; gap: 3rem; }
 .login-logo { width: min(16rem, 100%); flex-shrink: 0; border-radius: .625rem; }
