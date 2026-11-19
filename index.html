@@ -6,6 +6,7 @@
     <title>PJ Burguer · Gestão</title>
     <link rel="stylesheet" href="styles.css" />
     <link rel="stylesheet" href="services/inventory-accessibility.css" />
+    <link rel="stylesheet" href="services/login-design.css" />
     <script src="config/app.config.js"></script>
   </head>
   <body>
@@ -28,12 +29,24 @@
       <button type="submit">Salvar nova senha</button>
     </form></dialog>
     <section id="authScreen" class="auth-screen">
-      <div class="auth-card">
-        <div class="brand auth-brand">
-          <img class="official-logo" src="assets/pjota-buguer-logo.jpeg" alt="P’Jota Buguer" width="1020" height="1280" />
-          <small>Acesso operacional</small>
+      <aside class="login-story" aria-label="PJ Burguer — Gestão">
+        <img class="official-logo login-logo" src="assets/pjota-buguer-logo.jpeg" alt="P’Jota Buguer" width="1020" height="1280" />
+        <div class="login-story-copy">
+          <p class="login-eyebrow">DA CHAPA À GESTÃO</p>
+          <h2>Sabor na cozinha.<br /><span>Controle na operação.</span></h2>
+          <p>Mais clareza para cuidar dos pedidos, dos ingredientes e de cada detalhe da sua hamburgueria.</p>
+          <ul class="login-benefits">
+            <li><span class="login-feature-icon" data-ui-icon="receipt"></span><div><strong>Pedidos no ritmo da casa</strong><span>Acompanhe cada etapa do atendimento.</span></div></li>
+            <li><span class="login-feature-icon" data-ui-icon="layers"></span><div><strong>Estoque sempre à vista</strong><span>Saiba o que tem e o que precisa repor.</span></div></li>
+            <li><span class="login-feature-icon" data-ui-icon="users"></span><div><strong>Sua equipe, conectada</strong><span>Acesse os dados em diferentes dispositivos.</span></div></li>
+          </ul>
         </div>
-
+        <p class="login-signature">P’Jota Buguer <span aria-hidden="true">·</span> Gestão da hamburgueria</p>
+      </aside>
+      <div class="login-access">
+      <div class="auth-card">
+        <p class="login-security"><span data-ui-icon="shield"></span> ACESSO DA EQUIPE</p>
+        <p class="login-loading" role="status">Preparando seu acesso…</p>
         <form id="setupForm" class="auth-form hidden">
           <h1>Criar administrador</h1>
           <p class="hint">O primeiro acesso criado tera permissao total no sistema.</p>
@@ -55,19 +68,22 @@
         </form>
 
         <form id="loginForm" class="auth-form hidden">
-          <h1>Entrar no sistema</h1>
+          <h1>Bom ter você de volta.</h1>
+          <p class="login-intro">Entre para acompanhar a operação da sua hamburgueria.</p>
           <label>
             Email
-            <input id="loginEmail" type="email" required />
+            <input id="loginEmail" type="email" autocomplete="username" inputmode="email" placeholder="seu@email.com" required />
           </label>
           <label>
             Senha
-            <input id="loginPassword" type="password" required />
+            <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Digite sua senha" required />
           </label>
-          <button type="submit">Entrar</button>
           <button id="forgotPassword" type="button" class="ghost-button">Esqueci minha senha</button>
-          <p id="loginMessage" class="hint"></p>
+          <button type="submit">Entrar <span aria-hidden="true">→</span></button>
+          <p id="loginMessage" class="hint" role="alert" aria-live="polite"></p>
         </form>
+        <p class="login-footnote"><span data-ui-icon="shield"></span> Seu acesso é individual. Não compartilhe sua senha.</p>
+      </div>
       </div>
     </section>
 
